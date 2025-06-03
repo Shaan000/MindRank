@@ -3,77 +3,152 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-
 import LandingPage from './LandingPage';
 import PuzzlePage from './PuzzlePage';
 import EloPage from './EloPage';
-import Dashboard from './components/Dashboard';
+import ProtectedApp from './components/ProtectedApp';
 import Login from './components/Login';
 import Register from './components/Register';
+import PracticeSignIn from './components/PracticeSignIn';
+import RankedSignIn from './components/RankedSignIn';
+import LeaderboardSignIn from './components/LeaderboardSignIn';
+import LeaderboardPage from './components/LeaderboardPage';
+import EasyModePage from './components/EasyModePage';
+import MediumModePage from './components/MediumModePage';
+import HardModePage from './components/HardModePage';
+import ExtremeModePage from './components/ExtremeModePage';
+import MasterEasyModePage from './components/MasterEasyModePage';
+import MasterMediumModePage from './components/MasterMediumModePage';
+import MasterHardModePage from './components/MasterHardModePage';
+import MasterExtremeModePage from './components/MasterExtremeModePage';
+import Instructions from './components/Instructions';
 import { supabase } from './supabase';
 
 // Only protect "ranked" puzzles; practice always open
-function ProtectedPuzzle({ user }) {
+function ProtectedPuzzle({ user, accessToken, authInitialized }) {
   const { search } = useLocation();
   const mode = new URLSearchParams(search).get('mode');
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (mode === 'ranked' && !user) {
+    if (mode === 'ranked' && authInitialized && !user) {
       navigate('/login?redirectTo=' + encodeURIComponent(window.location.pathname + window.location.search));
     }
-  }, [mode, user, navigate]);
+  }, [mode, user, authInitialized, navigate]);
 
-  return <PuzzlePage user={user} />;
+  return <PuzzlePage user={user} accessToken={accessToken} authInitialized={authInitialized} />;
 }
 
 function App() {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [accessToken, setAccessToken] = useState(null);
+  const [authInitialized, setAuthInitialized] = useState(false);
+  const [initializing, setInitializing] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
-    // Get initial session
-    const initAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        setUser(session?.user ?? null);
-        
-        // Set up auth state listener
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-          const currentUser = session?.user ?? null;
-          setUser(currentUser);
-          
-          // Only redirect on login page after authentication
-          if (currentUser && location.pathname === '/login') {
-            const params = new URLSearchParams(location.search);
-            const redirectTo = params.get('redirectTo') || '/';
-            navigate(redirectTo);
-          }
-        });
+    let mounted = true;
 
-        return () => {
-          subscription.unsubscribe();
-        };
-      } finally {
-        setLoading(false);
+    const initializeAuth = async () => {
+      console.log('🔄 Starting auth initialization...');
+      
+      try {
+        // Add minimum loading time so you can see the screen
+        const startTime = Date.now();
+        
+        // First, get the current session
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (!mounted) return;
+
+        if (error) {
+          console.error('❌ Session initialization error:', error);
+        } else if (session) {
+          console.log('✅ Found existing session:', session.user.email);
+          console.log('🔑 Access token available:', !!session.access_token);
+          setUser(session.user);
+          setAccessToken(session.access_token);
+        } else {
+          console.log('📱 No existing session found');
+          setUser(null);
+          setAccessToken(null);
+        }
+
+        // Ensure minimum 2 second loading time so you can see the screen
+        const elapsed = Date.now() - startTime;
+        const minLoadTime = 2000; // 2 seconds
+        const remainingTime = Math.max(0, minLoadTime - elapsed);
+        
+        if (remainingTime > 0) {
+          console.log(`⏱️ Waiting ${remainingTime}ms more to show loading screen...`);
+          await new Promise(resolve => setTimeout(resolve, remainingTime));
+        }
+
+        // Mark auth as initialized regardless of whether we found a session
+        setAuthInitialized(true);
+        setInitializing(false);
+        console.log('🎯 Auth initialization complete');
+
+      } catch (error) {
+        console.error('💥 Critical auth initialization error:', error);
+        if (mounted) {
+          setAuthInitialized(true);
+          setInitializing(false);
+        }
       }
     };
 
-    initAuth();
+    // Set up auth state listener BEFORE getting session
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('🔄 Auth state changed:', event);
+      
+      if (!mounted) return;
+
+      if (session) {
+        console.log('✅ User authenticated:', session.user.email);
+        console.log('🔑 New access token:', !!session.access_token);
+        setUser(session.user);
+        setAccessToken(session.access_token);
+        
+        // Handle redirects after successful authentication
+        if (location.pathname === '/') {
+          navigate('/app');
+        } else if (location.pathname === '/login') {
+          const params = new URLSearchParams(location.search);
+          const redirectTo = params.get('redirectTo') || '/app';
+          navigate(redirectTo);
+        }
+      } else {
+        console.log('👋 User signed out');
+        setUser(null);
+        setAccessToken(null);
+      }
+    });
+
+    // Initialize auth
+    initializeAuth();
+
+    // Cleanup function
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, [navigate, location]);
 
   const handleLogin = (userData) => {
     setUser(userData);
     localStorage.setItem('user', JSON.stringify(userData));
     
-    // Redirect to the intended destination or home
+    // Redirect to the intended destination or app dashboard
     const params = new URLSearchParams(location.search);
-    const redirectTo = params.get('redirectTo') || '/';
+    const redirectTo = params.get('redirectTo') || '/app';
     navigate(redirectTo);
   };
 
   const handleLogout = async () => {
     try {
+      console.log('🚪 Signing out...');
       await supabase.auth.signOut();
       setUser(null);
+      setAccessToken(null);
       localStorage.removeItem('user');
       navigate('/');
     } catch (error) {
@@ -81,16 +156,113 @@ function App() {
     }
   };
 
-  if (loading) {
+  // Show loading screen while auth is initializing
+  if (initializing || !authInitialized) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-cyan-50">
-        <div className="text-center space-y-4">
-          <svg className="animate-spin h-8 w-8 mx-auto text-blue-600" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-          </svg>
-          <p className="text-gray-600">Loading MindRank...</p>
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'linear-gradient(135deg, #262421 0%, #1a1816 100%)',
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 9999
+      }}>
+        <div style={{
+          textAlign: 'center', 
+          color: '#ffffff',
+          animation: 'fadeIn 0.5s ease-in'
+        }}>
+          <div style={{
+            fontSize: '4rem',
+            marginBottom: '2rem',
+            color: '#769656',
+            animation: 'pulse 2s infinite'
+          }}>
+            ⚡
+          </div>
+          <div style={{
+            fontSize: '2rem',
+            color: '#ffffff',
+            marginBottom: '1rem',
+            fontWeight: 'bold',
+            fontFamily: 'Georgia, serif'
+          }}>
+            MindRank
+          </div>
+          <div style={{
+            fontSize: '1.125rem',
+            color: '#b0a99f',
+            marginBottom: '0.5rem'
+          }}>
+            Initializing Authentication...
+          </div>
+          <div style={{
+            fontSize: '0.875rem',
+            color: '#666',
+            fontStyle: 'italic'
+          }}>
+            {!authInitialized ? 'Connecting to Supabase...' : 'Loading application...'}
+          </div>
+          
+          {/* Loading dots animation */}
+          <div style={{
+            marginTop: '2rem',
+            display: 'flex',
+            justifyContent: 'center',
+            gap: '0.5rem'
+          }}>
+            <div style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              backgroundColor: '#769656',
+              animation: 'bounce 1.4s infinite ease-in-out both',
+              animationDelay: '-0.32s'
+            }}></div>
+            <div style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              backgroundColor: '#769656',
+              animation: 'bounce 1.4s infinite ease-in-out both',
+              animationDelay: '-0.16s'
+            }}></div>
+            <div style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              backgroundColor: '#769656',
+              animation: 'bounce 1.4s infinite ease-in-out both'
+            }}></div>
+          </div>
         </div>
+        
+        {/* CSS animations */}
+        <style>{`
+          @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+          
+          @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+          }
+          
+          @keyframes bounce {
+            0%, 80%, 100% { 
+              transform: scale(0);
+            } 
+            40% { 
+              transform: scale(1);
+            }
+          }
+        `}</style>
       </div>
     );
   }
@@ -102,7 +274,7 @@ function App() {
         path="/login"
         element={
           user ? (
-            <Navigate to="/" replace />
+            <Navigate to="/app" replace />
           ) : (
             <Login onLogin={handleLogin} />
           )
@@ -112,14 +284,58 @@ function App() {
       {/* 🔒 FROZEN Landing page for everyone - v1.0 */}
       <Route path="/" element={<LandingPage />} />
 
+      {/* New sign-in pages for footer buttons */}
+      <Route path="/practice-signin" element={<PracticeSignIn />} />
+      <Route path="/ranked-signin" element={<RankedSignIn />} />
+      <Route path="/leaderboard-signin" element={<LeaderboardSignIn />} />
+
       <Route
-        path="/dashboard"
+        path="/app"
         element={
           user ? (
-            <Dashboard user={user} />
+            <ProtectedApp 
+              user={user} 
+              accessToken={accessToken}
+              authInitialized={authInitialized}
+              onLogout={handleLogout} 
+            />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+
+      {/* Practice Mode Routes - No authentication required */}
+      <Route path="/practice/easy" element={<EasyModePage user={user} accessToken={accessToken} authInitialized={authInitialized} />} />
+      <Route path="/practice/medium" element={<MediumModePage user={user} accessToken={accessToken} authInitialized={authInitialized} />} />
+      <Route path="/practice/hard" element={<HardModePage user={user} accessToken={accessToken} authInitialized={authInitialized} />} />
+      <Route path="/practice/extreme" element={<ExtremeModePage user={user} accessToken={accessToken} authInitialized={authInitialized} />} />
+
+      {/* Master Mode Routes - No authentication required but separate progress tracking */}
+      <Route path="/master/easy" element={<MasterEasyModePage user={user} accessToken={accessToken} authInitialized={authInitialized} />} />
+      <Route path="/master/medium" element={<MasterMediumModePage user={user} accessToken={accessToken} authInitialized={authInitialized} />} />
+      <Route path="/master/hard" element={<MasterHardModePage user={user} accessToken={accessToken} authInitialized={authInitialized} />} />
+      <Route path="/master/extreme" element={<MasterExtremeModePage user={user} accessToken={accessToken} authInitialized={authInitialized} />} />
+
+      {/* Instructions Route - Available to everyone */}
+      <Route 
+        path="/instructions" 
+        element={<Instructions onBack={() => window.history.back()} />} 
+      />
+
+      <Route
+        path="/puzzle"
+        element={<ProtectedPuzzle user={user} accessToken={accessToken} authInitialized={authInitialized} />}
+      />
+
+      <Route
+        path="/elo"
+        element={
+          user ? (
+            <EloPage user={user} accessToken={accessToken} />
           ) : (
             <Navigate
-              to={`/login?redirectTo=${encodeURIComponent('/dashboard')}`}
+              to={`/login?redirectTo=${encodeURIComponent('/elo')}`}
               replace
             />
           )
@@ -127,18 +343,13 @@ function App() {
       />
 
       <Route
-        path="/puzzle"
-        element={<ProtectedPuzzle user={user} />}
-      />
-
-      <Route
-        path="/elo"
+        path="/leaderboard"
         element={
           user ? (
-            <EloPage user={user} />
+            <LeaderboardPage accessToken={accessToken} />
           ) : (
             <Navigate
-              to={`/login?redirectTo=${encodeURIComponent('/elo')}`}
+              to={`/login?redirectTo=${encodeURIComponent('/leaderboard')}`}
               replace
             />
           )

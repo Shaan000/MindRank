@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Match History Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #262421;
+            color: #ffffff;
+        }
+        .container {
+            background: #1a1816;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #3d3a37;
+            margin-bottom: 20px;
+        }
+        button {
+            background: #769656;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #5d7c3f;
+        }
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        input {
+            padding: 8px;
+            border: 1px solid #3d3a37;
+            border-radius: 4px;
+            background: #262421;
+            color: #ffffff;
+            width: 300px;
+        }
+        .results {
+            background: #262421;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #3d3a37;
+            margin-top: 10px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .match {
+            padding: 10px;
+            margin: 5px 0;
+            background: #1a1816;
+            border-radius: 4px;
+            border-left: 4px solid #769656;
+        }
+        .match.loss {
+            border-left-color: #d2691e;
+        }
+        .match.abandoned {
+            border-left-color: #dc3545;
+        }
+        .error {
+            color: #ff9999;
+            background: #5a2d2d;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #7c4a4a;
+        }
+        .success {
+            color: #90ee90;
+            background: #2d5a2d;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #4a7c4a;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Match History Test Tool</h1>
+    
+    <div class="container">
+        <h2>Step 1: Enter Access Token</h2>
+        <p>Get your access token from the browser's developer console (look for Authorization headers in network requests):</p>
+        <input type="text" id="accessToken" placeholder="Enter your access token here...">
+        <br><br>
+        <button onclick="testConnection()">Test Connection</button>
+        <div id="connectionResult"></div>
+    </div>
+
+    <div class="container">
+        <h2>Step 2: Create Sample Matches</h2>
+        <p>Create 15 sample matches to test the match history functionality:</p>
+        <button onclick="createSampleMatches()" id="createBtn">Create Sample Matches</button>
+        <div id="createResult"></div>
+    </div>
+
+    <div class="container">
+        <h2>Step 3: Test Match History</h2>
+        <p>Test the new /user/matches endpoint:</p>
+        <button onclick="fetchMatches()">Fetch Recent Matches</button>
+        <button onclick="refreshMatches()">Refresh Matches (with cache busting)</button>
+        <div id="matchResult"></div>
+    </div>
+
+    <script>
+        let currentToken = '';
+
+        function getToken() {
+            const token = document.getElementById('accessToken').value.trim();
+            if (!token) {
+                alert('Please enter your access token first');
+                return null;
+            }
+            currentToken = token;
+            return token;
+        }
+
+        async function testConnection() {
+            const token = getToken();
+            if (!token) return;
+
+            const resultDiv = document.getElementById('connectionResult');
+            resultDiv.innerHTML = '<p>Testing connection...</p>';
+
+            try {
+                const response = await fetch('http://localhost:5000/me', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    resultDiv.innerHTML = `<div class="success">✅ Connection successful! User: ${data.user.username} (ELO: ${data.user.elo})</div>`;
+                } else {
+                    const error = await response.text();
+                    resultDiv.innerHTML = `<div class="error">❌ Connection failed: ${response.status} - ${error}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">❌ Connection error: ${error.message}</div>`;
+            }
+        }
+
+        async function createSampleMatches() {
+            const token = getToken();
+            if (!token) return;
+
+            const resultDiv = document.getElementById('createResult');
+            const btn = document.getElementById('createBtn');
+            
+            resultDiv.innerHTML = '<p>Creating sample matches...</p>';
+            btn.disabled = true;
+
+            try {
+                const response = await fetch('http://localhost:5000/test/create-sample-matches', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    resultDiv.innerHTML = `<div class="success">✅ ${data.message}<br>Created ${data.matches_created} matches</div>`;
+                } else {
+                    const error = await response.text();
+                    resultDiv.innerHTML = `<div class="error">❌ Failed to create matches: ${response.status} - ${error}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">❌ Error: ${error.message}</div>`;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function fetchMatches() {
+            const token = getToken();
+            if (!token) return;
+
+            const resultDiv = document.getElementById('matchResult');
+            resultDiv.innerHTML = '<p>Fetching matches...</p>';
+
+            try {
+                const response = await fetch('http://localhost:5000/user/matches?limit=10&order=desc', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Cache-Control': 'no-cache',
+                        'Pragma': 'no-cache'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    displayMatches(data.matches, resultDiv, 'Fetched');
+                } else {
+                    const error = await response.text();
+                    resultDiv.innerHTML = `<div class="error">❌ Failed to fetch matches: ${response.status} - ${error}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">❌ Error: ${error.message}</div>`;
+            }
+        }
+
+        async function refreshMatches() {
+            const token = getToken();
+            if (!token) return;
+
+            const resultDiv = document.getElementById('matchResult');
+            resultDiv.innerHTML = '<p>Refreshing matches...</p>';
+
+            try {
+                const timestamp = Date.now();
+                const response = await fetch(`http://localhost:5000/user/matches?limit=10&order=desc&t=${timestamp}`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Cache-Control': 'no-cache',
+                        'Pragma': 'no-cache'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    displayMatches(data.matches, resultDiv, 'Refreshed');
+                } else {
+                    const error = await response.text();
+                    resultDiv.innerHTML = `<div class="error">❌ Failed to refresh matches: ${response.status} - ${error}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">❌ Error: ${error.message}</div>`;
+            }
+        }
+
+        function displayMatches(matches, resultDiv, action) {
+            if (!matches || matches.length === 0) {
+                resultDiv.innerHTML = `<div class="success">✅ ${action} 0 matches. No matches found.</div>`;
+                return;
+            }
+
+            let html = `<div class="success">✅ ${action} ${matches.length} matches (showing newest first):</div><div class="results">`;
+            
+            matches.forEach((match, index) => {
+                const date = new Date(match.created_at);
+                const formattedDate = date.toLocaleDateString();
+                const formattedTime = date.toLocaleTimeString();
+                
+                const isWin = match.solved;
+                const eloChange = match.elo_after - match.elo_before;
+                
+                let matchClass = 'match';
+                let icon = '🏆';
+                let result = 'WIN';
+                
+                if (!isWin) {
+                    if (match.notes === 'Abandoned puzzle') {
+                        matchClass += ' abandoned';
+                        icon = '🚪';
+                        result = 'LOSS (abandoned)';
+                    } else if (match.notes === 'Gave up') {
+                        matchClass += ' abandoned';
+                        icon = '🏳️';
+                        result = 'LOSS (gave up)';
+                    } else {
+                        matchClass += ' loss';
+                        icon = '💔';
+                        result = 'LOSS';
+                    }
+                }
+                
+                html += `
+                    <div class="${matchClass}">
+                        <strong>${icon} ${result}</strong> - ${match.mode} (${match.num_players} players)<br>
+                        <small>ELO: ${match.elo_before} → ${match.elo_after} (${eloChange >= 0 ? '+' : ''}${eloChange})</small><br>
+                        <small>Time: ${Math.floor(match.time_taken / 60)}m ${match.time_taken % 60}s | ${formattedDate} ${formattedTime}</small>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            resultDiv.innerHTML = html;
+        }
+    </script>
+</body>
+</html> 

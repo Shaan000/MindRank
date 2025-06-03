@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Abandon API</title>
+</head>
+<body>
+    <h1>Test Abandon API</h1>
+    
+    <button id="testAbandon">Test Abandon Request</button>
+    <button id="testNormal">Test Normal Request</button>
+    
+    <div id="results"></div>
+    
+    <script>
+        const resultsDiv = document.getElementById('results');
+        
+        document.getElementById('testAbandon').addEventListener('click', async () => {
+            try {
+                const response = await fetch('http://localhost:5000/test/abandon', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        abandoned: true,
+                        mode: 'ranked',
+                        test: true
+                    })
+                });
+                
+                const result = await response.json();
+                resultsDiv.innerHTML = '<h3>Abandon Test Result:</h3>' + '<pre>' + JSON.stringify(result, null, 2) + '</pre>';
+            } catch (error) {
+                resultsDiv.innerHTML = '<h3>Error:</h3>' + error.message;
+            }
+        });
+        
+        document.getElementById('testNormal').addEventListener('click', async () => {
+            try {
+                const response = await fetch('http://localhost:5000/test/abandon', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        abandoned: false,
+                        mode: 'ranked',
+                        test: true
+                    })
+                });
+                
+                const result = await response.json();
+                resultsDiv.innerHTML = '<h3>Normal Test Result:</h3>' + '<pre>' + JSON.stringify(result, null, 2) + '</pre>';
+            } catch (error) {
+                resultsDiv.innerHTML = '<h3>Error:</h3>' + error.message;
+            }
+        });
+    </script>
+</body>
+</html> 

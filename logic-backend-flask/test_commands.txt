@@ -1,0 +1,25 @@
+# Test commands for PowerShell to manually test the abandon API
+
+# Test 1: Simple test endpoint
+Invoke-RestMethod -Uri "http://localhost:5000/test/abandon" -Method POST -ContentType "application/json" -Body '{"abandoned": true, "test": true}'
+
+# Test 2: Health check
+Invoke-RestMethod -Uri "http://localhost:5000/" -Method GET
+
+# Test 3: Test abandon request with full data (replace YOUR_TOKEN with your actual JWT)
+$headers = @{
+    "Content-Type" = "application/json"
+    "Authorization" = "Bearer YOUR_TOKEN"
+}
+
+$body = @{
+    mode = "ranked"
+    player_assignments = @{}
+    statement_data = @{}
+    num_truth_tellers = 2
+    time_taken = 30
+    gave_up = $true
+    abandoned = $true
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:5000/puzzle/check" -Method POST -Headers $headers -Body $body 

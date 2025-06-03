@@ -10,6 +10,14 @@ export default function LandingPage() {
   const [samplePuzzle, setSamplePuzzle] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [playerCount, setPlayerCount] = useState(4);
+  const [isSolving, setIsSolving] = useState(false);
+  const [playerGuesses, setPlayerGuesses] = useState({});
+  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [submissionResult, setSubmissionResult] = useState(null);
+  const [hasGivenUp, setHasGivenUp] = useState(false);
+  const [solution, setSolution] = useState(null);
+  const [hasSolvedOnce, setHasSolvedOnce] = useState(false);
+  const [feedbackMessage, setFeedbackMessage] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -20,7 +28,8 @@ export default function LandingPage() {
   const generateSamplePuzzle = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(`http://localhost:5000/puzzle/generate`, {
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+      const response = await fetch(`${apiUrl}/puzzle/generate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -35,24 +44,101 @@ export default function LandingPage() {
       const data = await response.json();
       console.log('Puzzle data:', data);
       
-      // Transform the data to ensure we have an array of statements
-      const transformedData = {
-        ...data,
-        statement_data: Array.isArray(data.statement_data) 
-          ? data.statement_data 
-          : typeof data.statement_data === 'object'
-            ? Object.values(data.statement_data)
-            : data.statements
-              ? Object.values(data.statements)
-              : []
-      };
-      
-      setSamplePuzzle(transformedData);
+      // Keep statement_data as object to preserve alphabetical keys (A, B, C, etc.)
+      setSamplePuzzle(data);
+      // Reset solving state when generating new puzzle
+      setIsSolving(false);
+      setPlayerGuesses({});
+      setIsSubmitted(false);
+      setSubmissionResult(null);
+      setHasGivenUp(false);
+      setSolution(null);
+      setFeedbackMessage('');
     } catch (error) {
       console.error('Error generating sample puzzle:', error);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleStartSolving = () => {
+    setIsSolving(true);
+    // Initialize player guesses
+    if (samplePuzzle && samplePuzzle.statement_data) {
+      const initialGuesses = {};
+      const players = Object.keys(samplePuzzle.statement_data);
+      players.forEach(player => {
+        initialGuesses[player] = null; // null means no selection
+      });
+      setPlayerGuesses(initialGuesses);
+    }
+  };
+
+  const handlePlayerGuess = (player, isTrue) => {
+    setPlayerGuesses(prev => ({
+      ...prev,
+      [player]: prev[player] === isTrue ? null : isTrue // Toggle or deselect
+    }));
+    
+    // Clear any validation messages when user changes selections
+    if (feedbackMessage && !submissionResult) {
+      setFeedbackMessage('');
+      setSubmissionResult(null);
+    }
+  };
+
+  const handleSubmitGuess = async () => {
+    // Check if all players have values selected
+    const hasAllValues = Object.values(playerGuesses).every(guess => guess !== null);
+    
+    if (!hasAllValues) {
+      setFeedbackMessage('Please select Truth-Teller (T) or Liar (F) for all players before submitting.');
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+      const response = await fetch(`${apiUrl}/puzzle/check`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          mode: 'easy',
+          statement_data: samplePuzzle.statement_data,
+          guess: playerGuesses,
+          num_truth_tellers: samplePuzzle.num_truth_tellers
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to check solution');
+      const result = await response.json();
+      
+      setSubmissionResult(result);
+      
+      // Only freeze the puzzle if the answer is correct
+      if (result.valid) {
+        setIsSubmitted(true);
+        setHasSolvedOnce(true);
+        setFeedbackMessage('Correct! Well done!');
+      } else {
+        // For incorrect answers, allow retrying - don't set isSubmitted or hasSolvedOnce
+        setFeedbackMessage('Incorrect. Try again or give up to see the solution.');
+      }
+    } catch (error) {
+      console.error('Error checking solution:', error);
+      setFeedbackMessage('Error checking solution. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGiveUp = () => {
+    setHasGivenUp(true);
+    setHasSolvedOnce(true);
+    setSolution(samplePuzzle.solution);
+    setFeedbackMessage('Solution revealed below.');
   };
 
   const handleGoogleSignIn = async () => {
@@ -132,8 +218,8 @@ export default function LandingPage() {
     padding: '2rem',
     margin: '2rem auto',
     maxWidth: '600px',
-    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-    border: '1px solid #3d3a37'
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15), 0 0 20px rgba(0, 255, 0, 0.3)',
+    border: '1px solid #00ff00'
   };
 
   const statementStyle = {
@@ -180,6 +266,88 @@ export default function LandingPage() {
     borderRadius: '6px'
   };
 
+  // New styles for sample-solve UI
+  const playerRowStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '1rem',
+    marginBottom: '1rem',
+    padding: '0.75rem',
+    background: '#1a1816',
+    borderRadius: '8px'
+  };
+
+  const playerTileStyle = {
+    width: '40px',
+    height: '40px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: '#769656',
+    color: 'white',
+    fontWeight: '700',
+    fontSize: '1.25rem',
+    borderRadius: '6px',
+    fontFamily: 'Georgia, serif'
+  };
+
+  const toggleButtonStyle = (isActive, isTrue) => ({
+    padding: '0.5rem 1rem',
+    border: '1px solid #3d3a37',
+    borderRadius: '6px',
+    background: isActive ? (isTrue ? '#769656' : '#cc4125') : '#2a2824',
+    color: isActive ? 'white' : '#b0a99f',
+    fontWeight: '600',
+    cursor: 'pointer',
+    minWidth: '40px',
+    transition: 'all 0.2s ease',
+    fontFamily: 'Georgia, serif'
+  });
+
+  const submitButtonStyle = {
+    background: '#cc8c14',
+    color: 'white',
+    padding: '0.75rem 1.5rem',
+    borderRadius: '6px',
+    border: 'none',
+    fontWeight: '600',
+    fontSize: '1rem',
+    cursor: 'pointer',
+    marginRight: '1rem',
+    fontFamily: 'Georgia, serif'
+  };
+
+  const giveUpButtonStyle = {
+    background: 'transparent',
+    color: '#b0a99f',
+    padding: '0.75rem 1.5rem',
+    borderRadius: '6px',
+    border: '2px solid #3d3a37',
+    fontWeight: '600',
+    fontSize: '1rem',
+    cursor: 'pointer',
+    fontFamily: 'Georgia, serif'
+  };
+
+  const feedbackStyle = {
+    padding: '1rem',
+    borderRadius: '8px',
+    marginBottom: '1rem',
+    textAlign: 'center',
+    fontWeight: '600',
+    background: submissionResult?.valid ? '#2d5a2d' : (submissionResult === null ? '#5a4a2d' : '#5a2d2d'),
+    color: submissionResult?.valid ? '#90ee90' : (submissionResult === null ? '#ffc107' : '#ff9999'),
+    border: `1px solid ${submissionResult?.valid ? '#4a7c4a' : (submissionResult === null ? '#7c6a4a' : '#7c4a4a')}`
+  };
+
+  const solutionCardStyle = {
+    background: '#1a1816',
+    borderRadius: '8px',
+    padding: '1.5rem',
+    marginTop: '1rem',
+    border: '1px solid #3d3a37'
+  };
+
   return (
     <div style={homepageStyle}>
       <div style={heroStyle}>
@@ -201,31 +369,35 @@ export default function LandingPage() {
       </div>
 
       <div style={sectionStyle}>
-        <h2 style={{fontSize: '2rem', fontWeight: '700', marginBottom: '3rem', color: '#ffffff', fontFamily: 'Georgia, serif', textAlign: 'center'}}>Try a Sample Puzzle</h2>
+        <h2 style={{fontSize: '2rem', fontWeight: '700', marginBottom: '3rem', color: '#ffffff', fontFamily: 'Georgia, serif', textAlign: 'center'}}>Try a Sample Puzzle — Find One Logically Possible Solution</h2>
         
-        <div style={{margin: '2rem auto', textAlign: 'center', maxWidth: '400px'}}>
-          <label style={{display: 'block', marginBottom: '1rem', fontSize: '1rem', color: '#b0a99f', fontWeight: '500'}}>
-            Number of Players: {playerCount}
-          </label>
-          <input
-            type="range"
-            min="3"
-            max="8"
-            value={playerCount}
-            onChange={(e) => setPlayerCount(parseInt(e.target.value))}
-            style={{width: '100%', height: '6px', borderRadius: '3px', background: '#1a1816'}}
-          />
-        </div>
+        {!hasSolvedOnce && !isSolving && (
+          <>
+            <div style={{margin: '2rem auto', textAlign: 'center', maxWidth: '400px'}}>
+              <label style={{display: 'block', marginBottom: '1rem', fontSize: '1rem', color: '#b0a99f', fontWeight: '500'}}>
+                Number of Players: {playerCount}
+              </label>
+              <input
+                type="range"
+                min="3"
+                max="8"
+                value={playerCount}
+                onChange={(e) => setPlayerCount(parseInt(e.target.value))}
+                style={{width: '100%', height: '6px', borderRadius: '3px', background: '#1a1816'}}
+              />
+            </div>
 
-        <div style={{textAlign: 'center'}}>
-          <button 
-            style={{...buttonStyle, background: '#769656', width: 'auto'}}
-            onClick={generateSamplePuzzle}
-            disabled={isLoading}
-          >
-            🎲 Generate New Puzzle
-          </button>
-        </div>
+            <div style={{textAlign: 'center'}}>
+              <button 
+                style={{...buttonStyle, background: '#769656', width: 'auto'}}
+                onClick={generateSamplePuzzle}
+                disabled={isLoading}
+              >
+                🎲 Generate New Puzzle
+              </button>
+            </div>
+          </>
+        )}
 
         <div style={cardStyle}>
           {isLoading ? (
@@ -235,37 +407,103 @@ export default function LandingPage() {
           ) : samplePuzzle ? (
             <>
               <h3 style={{fontSize: '1.375rem', color: '#ffffff', marginBottom: '1.5rem', fontWeight: '600', fontFamily: 'Georgia, serif'}}>
-                Sample Logic Puzzle
+                Puzzle ({samplePuzzle.num_players} players, {samplePuzzle.num_truth_tellers} truth-tellers)
               </h3>
+
+              {feedbackMessage && (
+                <div style={feedbackStyle}>
+                  {submissionResult?.valid ? '✅' : (submissionResult === null ? '⚠️' : (feedbackMessage.includes('Error') ? '⚠️' : '❌'))} {feedbackMessage}
+                </div>
+              )}
+
               <div style={{textAlign: 'left'}}>
-                <p style={{color: '#b0a99f', marginBottom: '0.75rem', fontSize: '0.9rem', fontWeight: '500'}}>
-                  Players: {playerCount}
-                </p>
-                <p style={{color: '#b0a99f', marginBottom: '0.75rem', fontSize: '0.9rem', fontWeight: '500'}}>
-                  Truth-tellers: {samplePuzzle.num_truth_tellers}
-                </p>
                 <div style={{margin: '1.5rem 0'}}>
-                  {samplePuzzle.statement_data.map((statement, index) => {
+                  {samplePuzzle.statement_data && Object.entries(samplePuzzle.statement_data).map(([player, statement], index) => {
                     const statementText = typeof statement === 'string' 
                       ? statement 
                       : statement.target 
-                        ? `${statement.target} is a ${statement.truth_value ? 'truth-teller' : 'liar'}`
+                        ? `${statement.target} is a ${statement.truth_value ? 'Truth-Teller' : 'Liar'}`
                         : 'Invalid statement format';
                     
                     return (
                       <p key={index} style={statementStyle}>
-                        Player {index + 1}: "{statementText}"
+                        Player {player}: "{statementText}"
                       </p>
                     );
                   })}
                 </div>
               </div>
-              <button 
-                style={buttonStyle}
-                onClick={() => navigate('/login?redirectTo=/puzzle')}
-              >
-                🤔 Try to Solve It!
-              </button>
+
+              {!isSolving && !hasSolvedOnce && (
+                <button 
+                  style={buttonStyle}
+                  onClick={handleStartSolving}
+                >
+                  Try to Solve It!
+                </button>
+              )}
+
+              {isSolving && (
+                <>
+                  <div style={{marginTop: '2rem'}}>
+                    <h4 style={{color: '#ffffff', marginBottom: '1rem', fontFamily: 'Georgia, serif', fontSize: '1.125rem'}}>
+                      Make your guesses:
+                    </h4>
+                    {Object.keys(samplePuzzle.statement_data).map(player => (
+                      <div key={player} style={playerRowStyle}>
+                        <div style={playerTileStyle}>{player}</div>
+                        <div style={{display: 'flex', gap: '0.5rem'}}>
+                          <button
+                            style={toggleButtonStyle(playerGuesses[player] === true, true)}
+                            onClick={() => handlePlayerGuess(player, true)}
+                            disabled={isSubmitted || hasGivenUp}
+                          >
+                            T
+                          </button>
+                          <button
+                            style={toggleButtonStyle(playerGuesses[player] === false, false)}
+                            onClick={() => handlePlayerGuess(player, false)}
+                            disabled={isSubmitted || hasGivenUp}
+                          >
+                            F
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {!isSubmitted && !hasGivenUp && (
+                    <div style={{marginTop: '2rem', display: 'flex', justifyContent: 'center'}}>
+                      <button 
+                        style={submitButtonStyle}
+                        onClick={handleSubmitGuess}
+                        disabled={isLoading}
+                      >
+                        Submit Guess
+                      </button>
+                      <button 
+                        style={giveUpButtonStyle}
+                        onClick={handleGiveUp}
+                      >
+                        I Give Up
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {hasGivenUp && solution && (
+                <div style={solutionCardStyle}>
+                  <h4 style={{color: '#ffffff', marginBottom: '1rem', fontFamily: 'Georgia, serif', fontSize: '1.125rem'}}>
+                    One Possible Solution:
+                  </h4>
+                  {Object.entries(solution).map(([player, isTruthTeller]) => (
+                    <p key={player} style={{color: '#e5e0dc', marginBottom: '0.5rem', fontFamily: 'Georgia, serif'}}>
+                      {player} is a {isTruthTeller ? 'Truth-Teller' : 'Liar'}
+                    </p>
+                  ))}
+                </div>
+              )}
             </>
           ) : (
             <p>Failed to load puzzle. Please try again.</p>
@@ -276,19 +514,19 @@ export default function LandingPage() {
       <footer style={footerStyle}>
         <button 
           style={footerButtonStyle}
-          onClick={() => navigate('/login?redirectTo=/puzzle?mode=practice')}
+          onClick={() => navigate('/practice-signin')}
         >
           🎯 Practice Mode
         </button>
         <button 
           style={footerButtonStyle}
-          onClick={() => navigate('/login?redirectTo=/puzzle?mode=ranked')}
+          onClick={() => navigate('/ranked-signin')}
         >
           🏆 Ranked Mode
         </button>
         <button 
           style={footerButtonStyle}
-          onClick={() => navigate('/login?redirectTo=/elo')}
+          onClick={() => navigate('/leaderboard-signin')}
         >
           📊 Leaderboard
         </button>

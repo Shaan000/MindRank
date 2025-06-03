@@ -72,6 +72,18 @@ export default function Dashboard({ user }) {
       requiresAuth: true
     },
     {
+      title: 'How to Play',
+      description: 'Learn the rules and strategies',
+      icon: (
+        <svg className="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+        </svg>
+      ),
+      onClick: () => navigate('/instructions'),
+      color: 'from-purple-500 to-purple-600',
+      always: true
+    },
+    {
       title: eloData ? `${getTierInfo(eloData.elo).name} - ${eloData.elo} ELO` : 'Loading...',
       description: 'View your stats and progress',
       icon: (
@@ -93,8 +105,13 @@ export default function Dashboard({ user }) {
         </h1>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {tiles.map((tile, index) => (
-            ((tile.always || !tile.requiresAuth) || (tile.requiresAuth && user)) && (
+          {tiles.map((tile, index) => {
+            // Show tile if it's always visible OR if it doesn't require auth OR if user is authenticated
+            const shouldShow = tile.always || !tile.requiresAuth || (tile.requiresAuth && user);
+            
+            console.log(`🎯 Dashboard Tile ${index}: "${tile.title}" - shouldShow: ${shouldShow}, always: ${tile.always}, requiresAuth: ${tile.requiresAuth}, user: ${!!user}`);
+            
+            return shouldShow && (
               <button
                 key={index}
                 onClick={tile.onClick}
@@ -114,8 +131,8 @@ export default function Dashboard({ user }) {
                 <h3 className="text-2xl font-bold mb-4">{tile.title}</h3>
                 <p className="text-sm opacity-90">{tile.description}</p>
               </button>
-            )
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>

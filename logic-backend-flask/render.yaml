@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: mindrank-backend
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false  
+      - key: SUPABASE_JWT_SECRET
+        sync: false 

@@ -1,6 +1,7 @@
 {
-  "short_name": "React App",
-  "name": "Create React App Sample",
+  "short_name": "MindRank",
+  "name": "MindRank - Logic Puzzle Master",
+  "description": "Master logic puzzles, climb the leaderboard, and train your brain with challenging truth-teller and liar puzzles.",
   "icons": [
     {
       "src": "favicon.ico",
@@ -20,6 +21,7 @@
   ],
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#ffffff"
+  "theme_color": "#769656",
+  "background_color": "#262421",
+  "categories": ["games", "education", "entertainment"]
 }
