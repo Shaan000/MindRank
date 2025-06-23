@@ -1,0 +1,52 @@
+{
+  "version": 2,
+  "buildCommand": "npm run build",
+  "outputDirectory": "logic-frontend-react/build",
+  "routes": [
+    {
+      "src": "/static/(.*)",
+      "dest": "/static/$1"
+    },
+    {
+      "src": "/favicon\\.png",
+      "dest": "/favicon.png"
+    },
+    {
+      "src": "/favicon-16x16\\.png",
+      "dest": "/favicon-16x16.png"
+    },
+    {
+      "src": "/favicon-32x32\\.png",
+      "dest": "/favicon-32x32.png"
+    },
+    {
+      "src": "/apple-touch-icon\\.png",
+      "dest": "/apple-touch-icon.png"
+    },
+    {
+      "src": "/logo192\\.png",
+      "dest": "/logo192.png"
+    },
+    {
+      "src": "/logo152\\.png",
+      "dest": "/logo152.png"
+    },
+    {
+      "src": "/manifest.json",
+      "dest": "/manifest.json"
+    },
+    {
+      "src": "/robots.txt",
+      "dest": "/robots.txt"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ],
+  "env": {
+    "REACT_APP_API_URL": "https://mindrank.onrender.com",
+    "REACT_APP_SUPABASE_URL": "https://mpwarblpwxsawaktctyw.supabase.co",
+    "REACT_APP_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wd2FyYmxwd3hzYXdha3RjdHl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg0NzQ4NDEsImV4cCI6MjA2NDA1MDg0MX0.PFqT_7jZMFy6CbzBaYuxdkUU7THfRQtGYXB4iUt4AQc"
+  }
+} 

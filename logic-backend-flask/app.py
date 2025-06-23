@@ -56,7 +56,7 @@ from elo_system import (
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=["https://mindrank.net", "https://www.mindrank.net", "https://mind-rank.vercel.app"])
 
 # Initialize Supabase client
 supabase_url = os.getenv("SUPABASE_URL")
