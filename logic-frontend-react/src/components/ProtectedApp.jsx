@@ -195,7 +195,7 @@ export default function ProtectedApp({ user, accessToken, authInitialized, onLog
 
   const fetchEloData = async () => {
     if (!accessToken) {
-      console.warn('⚠️ No access token available for ELO fetching');
+      // console.warn('⚠️ No access token available for ELO fetching');
       setEloError('No authentication token available');
       return;
     }
@@ -204,7 +204,7 @@ export default function ProtectedApp({ user, accessToken, authInitialized, onLog
       setEloLoading(true);
       setEloError(null);
       
-      console.log('🔍 Fetching ELO data with access token...');
+      // console.log('🔍 Fetching ELO data with access token...');
       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
       
       const response = await fetch(`${apiUrl}/user/elo`, {
@@ -217,23 +217,23 @@ export default function ProtectedApp({ user, accessToken, authInitialized, onLog
         }
       });
 
-      console.log('📡 ELO fetch response status:', response.status);
+      // console.log('📡 ELO fetch response status:', response.status);
 
       if (response.ok) {
         const data = await response.json();
-        console.log('✅ ELO data received:', data);
+        // console.log('✅ ELO data received:', data);
         setEloData(data);
         setEloError(null);
       } else if (response.status === 401) {
-        console.error('❌ ELO fetch unauthorized - token may be expired');
+        // console.error('❌ ELO fetch unauthorized - token may be expired');
         setEloError('Session expired - please refresh the page');
       } else {
         const errorText = await response.text();
-        console.error('❌ ELO fetch failed:', response.status, errorText);
+        // console.error('❌ ELO fetch failed:', response.status, errorText);
         setEloError(`Failed to fetch ELO: ${response.status}`);
       }
     } catch (error) {
-      console.error('❌ Error fetching ELO:', error);
+      // console.error('❌ Error fetching ELO:', error);
       setEloError(error.message || 'Network error while fetching ELO');
     } finally {
       setEloLoading(false);
@@ -242,12 +242,12 @@ export default function ProtectedApp({ user, accessToken, authInitialized, onLog
 
   const fetchUsername = async () => {
     if (!accessToken) {
-      console.warn('⚠️ No access token available for username fetching');
+      // console.warn('⚠️ No access token available for username fetching');
       return;
     }
 
     try {
-      console.log('🔍 Fetching username with access token...');
+      // console.log('🔍 Fetching username with access token...');
       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
       
       const response = await fetch(`${apiUrl}/me`, {
@@ -258,19 +258,19 @@ export default function ProtectedApp({ user, accessToken, authInitialized, onLog
         }
       });
 
-      console.log('📡 Username fetch response status:', response.status);
+      // console.log('📡 Username fetch response status:', response.status);
 
       if (response.ok) {
         const data = await response.json();
-        console.log('✅ Username data received:', data);
+        // console.log('✅ Username data received:', data);
         setCurrentUsername(data.user.username || user?.email?.split('@')[0] || 'Player');
       } else {
-        console.error('❌ Username fetch failed:', response.status);
+        // console.error('❌ Username fetch failed:', response.status);
         // Fallback to email prefix
         setCurrentUsername(user?.email?.split('@')[0] || 'Player');
       }
     } catch (error) {
-      console.error('❌ Error fetching username:', error);
+      // console.error('❌ Error fetching username:', error);
       // Fallback to email prefix
       setCurrentUsername(user?.email?.split('@')[0] || 'Player');
     }
@@ -292,13 +292,13 @@ export default function ProtectedApp({ user, accessToken, authInitialized, onLog
       if (response.ok) {
         const data = await response.json();
         setProgressBarsData(data.progress_bars || []);
-        console.log('✅ Progress bars loaded:', data.progress_bars);
+        // console.log('✅ Progress bars loaded:', data.progress_bars);
       } else {
-        console.log('⚠️ Progress bars request failed:', response.status);
+        // console.log('⚠️ Progress bars request failed:', response.status);
         setProgressBarsData([]);
       }
     } catch (error) {
-      console.error('❌ Error fetching progress bars:', error);
+      // console.error('❌ Error fetching progress bars:', error);
       setProgressBarsData([]);
     } finally {
       setProgressBarsLoading(false);
@@ -321,13 +321,13 @@ export default function ProtectedApp({ user, accessToken, authInitialized, onLog
       if (response.ok) {
         const data = await response.json();
         setMasterProgressBarsData(data.progress_bars || []);
-        console.log('✅ Master progress bars loaded:', data.progress_bars);
+        // console.log('✅ Master progress bars loaded:', data.progress_bars);
       } else {
-        console.log('⚠️ Master progress bars request failed:', response.status);
+        // console.log('⚠️ Master progress bars request failed:', response.status);
         setMasterProgressBarsData([]);
       }
     } catch (error) {
-      console.error('❌ Error fetching master progress bars:', error);
+      // console.error('❌ Error fetching master progress bars:', error);
       setMasterProgressBarsData([]);
     } finally {
       setMasterProgressBarsLoading(false);
@@ -350,7 +350,7 @@ export default function ProtectedApp({ user, accessToken, authInitialized, onLog
         allProgress[item.mode] = item;
       });
       
-      console.log(`🔍 Checking unlock status for ${mode}:`, {
+      // console.log(`🔍 Checking unlock status for ${mode}:`, {
         progressBarsData,
         allProgress,
         easyProgress: allProgress.easy,
@@ -363,24 +363,24 @@ export default function ProtectedApp({ user, accessToken, authInitialized, onLog
         case 'medium': 
           // Medium unlocked if easy mode has >= 10 solved
           const mediumUnlocked = allProgress.easy?.solved >= 10;
-          console.log(`🔓 Medium unlock check: easy solved = ${allProgress.easy?.solved}, unlocked = ${mediumUnlocked}`);
+          // console.log(`🔓 Medium unlock check: easy solved = ${allProgress.easy?.solved}, unlocked = ${mediumUnlocked}`);
           return mediumUnlocked;
         case 'hard': 
           // Hard unlocked if medium mode has >= 10 solved
           const hardUnlocked = allProgress.medium?.solved >= 10;
-          console.log(`🔓 Hard unlock check: medium solved = ${allProgress.medium?.solved}, unlocked = ${hardUnlocked}`);
+          // console.log(`🔓 Hard unlock check: medium solved = ${allProgress.medium?.solved}, unlocked = ${hardUnlocked}`);
           return hardUnlocked;
         case 'extreme': 
           // Extreme unlocked if hard mode has >= 10 solved
           const extremeUnlocked = allProgress.hard?.solved >= 10;
-          console.log(`🔓 Extreme unlock check: hard solved = ${allProgress.hard?.solved}, unlocked = ${extremeUnlocked}`);
+          // console.log(`🔓 Extreme unlock check: hard solved = ${allProgress.hard?.solved}, unlocked = ${extremeUnlocked}`);
           return extremeUnlocked;
         default: 
           return false;
       }
     }
     
-    console.log(`⚠️ No progress data available for ${mode}, falling back to localStorage`);
+    // console.log(`⚠️ No progress data available for ${mode}, falling back to localStorage`);
     // Fallback to localStorage for unauthenticated users
     if (mode === 'easy') return true;
     return localStorage.getItem(`${mode}Unlocked`) === 'true';
@@ -394,7 +394,7 @@ export default function ProtectedApp({ user, accessToken, authInitialized, onLog
         allProgress[item.mode] = item;
       });
       
-      console.log(`🔍 Checking master unlock status for ${mode}:`, {
+      // console.log(`🔍 Checking master unlock status for ${mode}:`, {
         masterProgressBarsData,
         allProgress,
         easyProgress: allProgress.easy,
@@ -407,31 +407,31 @@ export default function ProtectedApp({ user, accessToken, authInitialized, onLog
         case 'medium': 
           // Master Medium unlocked if master easy mode has >= 10 solved
           const mediumUnlocked = allProgress.easy?.solved >= 10;
-          console.log(`🔓 Master Medium unlock check: master easy solved = ${allProgress.easy?.solved}, unlocked = ${mediumUnlocked}`);
+          // console.log(`🔓 Master Medium unlock check: master easy solved = ${allProgress.easy?.solved}, unlocked = ${mediumUnlocked}`);
           return mediumUnlocked;
         case 'hard': 
           // Master Hard unlocked if master medium mode has >= 10 solved
           const hardUnlocked = allProgress.medium?.solved >= 10;
-          console.log(`🔓 Master Hard unlock check: master medium solved = ${allProgress.medium?.solved}, unlocked = ${hardUnlocked}`);
+          // console.log(`🔓 Master Hard unlock check: master medium solved = ${allProgress.medium?.solved}, unlocked = ${hardUnlocked}`);
           return hardUnlocked;
         case 'extreme': 
           // Master Extreme unlocked if master hard mode has >= 10 solved
           const extremeUnlocked = allProgress.hard?.solved >= 10;
-          console.log(`🔓 Master Extreme unlock check: master hard solved = ${allProgress.hard?.solved}, unlocked = ${extremeUnlocked}`);
+          // console.log(`🔓 Master Extreme unlock check: master hard solved = ${allProgress.hard?.solved}, unlocked = ${extremeUnlocked}`);
           return extremeUnlocked;
         default: 
           return false;
       }
     }
     
-    console.log(`⚠️ No master progress data available for ${mode}, falling back to localStorage`);
+    // console.log(`⚠️ No master progress data available for ${mode}, falling back to localStorage`);
     // Fallback to localStorage for unauthenticated users
     if (mode === 'easy') return true;
     return localStorage.getItem(`master${mode}Unlocked`) === 'true';
   };
 
   useEffect(() => {
-    console.log('🔍 ProtectedApp useEffect triggered with:', {
+    // console.log('🔍 ProtectedApp useEffect triggered with:', {
       authInitialized,
       user: !!user,
       userEmail: user?.email,
@@ -448,7 +448,7 @@ export default function ProtectedApp({ user, accessToken, authInitialized, onLog
 
     // Only fetch ELO data after auth is initialized AND we have both user and accessToken
     if (authInitialized && user && accessToken) {
-      console.log('🎯 Auth initialized and token available, fetching all data in parallel...');
+      // console.log('🎯 Auth initialized and token available, fetching all data in parallel...');
       
       // Run all API calls in parallel for much faster loading
       Promise.all([
@@ -457,19 +457,19 @@ export default function ProtectedApp({ user, accessToken, authInitialized, onLog
         fetchProgressBars(),
         fetchMasterProgressBars()
       ]).then(() => {
-        console.log('✅ All data loaded successfully');
+        // console.log('✅ All data loaded successfully');
       }).catch((error) => {
-        console.error('❌ Error loading some data:', error);
+        // console.error('❌ Error loading some data:', error);
       });
     } else if (authInitialized && !user) {
-      console.log('📱 Auth initialized but no user - user not authenticated');
+      // console.log('📱 Auth initialized but no user - user not authenticated');
       setEloError(null);
       setEloData(null);
     } else if (authInitialized && user && !accessToken) {
-      console.log('⚠️ Auth initialized and user found but no access token');
+      // console.log('⚠️ Auth initialized and user found but no access token');
       setEloError('Authentication token missing - please try refreshing');
     } else {
-      console.log('⏳ Still waiting for auth initialization...');
+      // console.log('⏳ Still waiting for auth initialization...');
     }
   }, [authInitialized, user, accessToken, location.state, navigate]);
 
@@ -851,10 +851,10 @@ export default function ProtectedApp({ user, accessToken, authInitialized, onLog
   };
 
   const handlePracticeSubTileClick = (difficulty) => {
-    console.log(`🎯 Practice sub-tile clicked: ${difficulty}`);
+    // console.log(`🎯 Practice sub-tile clicked: ${difficulty}`);
     
     if (isModeUnlocked(difficulty)) {
-      console.log(`✅ ${difficulty} mode is unlocked, navigating...`);
+      // console.log(`✅ ${difficulty} mode is unlocked, navigating...`);
       // Navigate to the specific practice mode page
       navigate(`/practice/${difficulty}`, {
         state: { 
@@ -864,7 +864,7 @@ export default function ProtectedApp({ user, accessToken, authInitialized, onLog
         }
       });
     } else {
-      console.log(`🔒 ${difficulty} mode is locked`);
+      // console.log(`🔒 ${difficulty} mode is locked`);
       
       // Get unlock requirements
       const requirements = {
@@ -875,7 +875,7 @@ export default function ProtectedApp({ user, accessToken, authInitialized, onLog
       
       const unlockRequirement = requirements[difficulty];
       if (unlockRequirement) {
-        console.log(`📢 Showing unlock message: ${unlockRequirement}`);
+        // console.log(`📢 Showing unlock message: ${unlockRequirement}`);
         setUnlockMessage(unlockRequirement);
         setShowUnlockMessage(true);
         
@@ -889,10 +889,10 @@ export default function ProtectedApp({ user, accessToken, authInitialized, onLog
   };
 
   const handleMasterSubTileClick = (difficulty) => {
-    console.log(`🧠 Master sub-tile clicked: ${difficulty}`);
+    // console.log(`🧠 Master sub-tile clicked: ${difficulty}`);
     
     if (isMasterModeUnlocked(difficulty)) {
-      console.log(`✅ Master ${difficulty} mode is unlocked, navigating...`);
+      // console.log(`✅ Master ${difficulty} mode is unlocked, navigating...`);
       // Navigate to the specific master mode page
       navigate(`/master/${difficulty}`, {
         state: { 
@@ -902,7 +902,7 @@ export default function ProtectedApp({ user, accessToken, authInitialized, onLog
         }
       });
     } else {
-      console.log(`🔒 Master ${difficulty} mode is locked`);
+      // console.log(`🔒 Master ${difficulty} mode is locked`);
       
       // Get unlock requirements for master mode
       const requirements = {
@@ -913,7 +913,7 @@ export default function ProtectedApp({ user, accessToken, authInitialized, onLog
       
       const unlockRequirement = requirements[difficulty];
       if (unlockRequirement) {
-        console.log(`📢 Showing master unlock message: ${unlockRequirement}`);
+        // console.log(`📢 Showing master unlock message: ${unlockRequirement}`);
         setUnlockMessage(unlockRequirement);
         setShowUnlockMessage(true);
         

@@ -48,7 +48,7 @@ function App() {
     let mounted = true;
 
     const initializeAuth = async () => {
-      console.log('🔄 Starting auth initialization...');
+      // console.log('🔄 Starting auth initialization...');
       
       try {
         // Add minimum loading time so you can see the screen
@@ -60,14 +60,14 @@ function App() {
         if (!mounted) return;
 
         if (error) {
-          console.error('❌ Session initialization error:', error);
+          // console.error('❌ Session initialization error:', error);
         } else if (session) {
-          console.log('✅ Found existing session:', session.user.email);
-          console.log('🔑 Access token available:', !!session.access_token);
+          // console.log('✅ Found existing session:', session.user.email);
+          // console.log('🔑 Access token available:', !!session.access_token);
           setUser(session.user);
           setAccessToken(session.access_token);
         } else {
-          console.log('📱 No existing session found');
+          // console.log('📱 No existing session found');
           setUser(null);
           setAccessToken(null);
         }
@@ -78,17 +78,17 @@ function App() {
         const remainingTime = Math.max(0, minLoadTime - elapsed);
         
         if (remainingTime > 0) {
-          console.log(`⏱️ Waiting ${remainingTime}ms more to show loading screen...`);
+          // console.log(`⏱️ Waiting ${remainingTime}ms more to show loading screen...`);
           await new Promise(resolve => setTimeout(resolve, remainingTime));
         }
 
         // Mark auth as initialized regardless of whether we found a session
         setAuthInitialized(true);
         setInitializing(false);
-        console.log('🎯 Auth initialization complete');
+        // console.log('🎯 Auth initialization complete');
 
       } catch (error) {
-        console.error('💥 Critical auth initialization error:', error);
+        // console.error('💥 Critical auth initialization error:', error);
         if (mounted) {
           setAuthInitialized(true);
           setInitializing(false);
@@ -98,13 +98,13 @@ function App() {
 
     // Set up auth state listener BEFORE getting session
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('🔄 Auth state changed:', event);
+      // console.log('🔄 Auth state changed:', event);
       
       if (!mounted) return;
 
       if (session) {
-        console.log('✅ User authenticated:', session.user.email);
-        console.log('🔑 New access token:', !!session.access_token);
+        // console.log('✅ User authenticated:', session.user.email);
+        // console.log('🔑 New access token:', !!session.access_token);
         setUser(session.user);
         setAccessToken(session.access_token);
         
@@ -117,7 +117,7 @@ function App() {
           navigate(redirectTo);
         }
       } else {
-        console.log('👋 User signed out');
+        // console.log('👋 User signed out');
         setUser(null);
         setAccessToken(null);
       }
@@ -145,14 +145,14 @@ function App() {
 
   const handleLogout = async () => {
     try {
-      console.log('🚪 Signing out...');
+      // console.log('🚪 Signing out...');
       await supabase.auth.signOut();
       setUser(null);
       setAccessToken(null);
       localStorage.removeItem('user');
       navigate('/');
     } catch (error) {
-      console.error('Error signing out:', error);
+      // console.error('Error signing out:', error);
     }
   };
 

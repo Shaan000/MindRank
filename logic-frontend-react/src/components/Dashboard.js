@@ -29,7 +29,7 @@ export default function Dashboard({ user }) {
         const data = await response.json();
         setEloData(data);
       } catch (error) {
-        console.error('Error fetching ELO:', error);
+        // console.error('Error fetching ELO:', error);
       } finally {
         setIsLoading(false);
       }
@@ -109,7 +109,7 @@ export default function Dashboard({ user }) {
             // Show tile if it's always visible OR if it doesn't require auth OR if user is authenticated
             const shouldShow = tile.always || !tile.requiresAuth || (tile.requiresAuth && user);
             
-            console.log(`🎯 Dashboard Tile ${index}: "${tile.title}" - shouldShow: ${shouldShow}, always: ${tile.always}, requiresAuth: ${tile.requiresAuth}, user: ${!!user}`);
+            // console.log(`🎯 Dashboard Tile ${index}: "${tile.title}" - shouldShow: ${shouldShow}, always: ${tile.always}, requiresAuth: ${tile.requiresAuth}, user: ${!!user}`);
             
             return shouldShow && (
               <button

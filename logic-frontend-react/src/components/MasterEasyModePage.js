@@ -24,7 +24,7 @@ export default function MasterEasyModePage({ user, accessToken, authInitialized 
   
   // Function to refresh progress bars by calling backend directly
   const refreshProgressBars = async () => {
-    console.log('🔄 Master puzzle completed - progress should be updated in backend');
+    // console.log('🔄 Master puzzle completed - progress should be updated in backend');
     
     if (user && accessToken) {
       try {
@@ -38,10 +38,10 @@ export default function MasterEasyModePage({ user, accessToken, authInitialized 
         
         if (response.ok) {
           const data = await response.json();
-          console.log('✅ Master progress refreshed:', data.progress_bars);
+          // console.log('✅ Master progress refreshed:', data.progress_bars);
         }
       } catch (error) {
-        console.error('❌ Error refreshing master progress:', error);
+        // console.error('❌ Error refreshing master progress:', error);
       }
     }
   };
@@ -76,7 +76,7 @@ export default function MasterEasyModePage({ user, accessToken, authInitialized 
       const playerCount = Math.floor(Math.random() * 4) + 4; // 4-7 players
       
       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-      console.log('🔥 Generating Master Easy puzzle...');
+      // console.log('🔥 Generating Master Easy puzzle...');
       
       const response = await fetch(`${apiUrl}/puzzle/generate`, {
         method: 'POST',
@@ -95,7 +95,7 @@ export default function MasterEasyModePage({ user, accessToken, authInitialized 
       }
 
       const data = await response.json();
-      console.log('🔥 Master Easy puzzle data received:', data);
+      // console.log('🔥 Master Easy puzzle data received:', data);
       setPuzzle(data);
       
       // Initialize player guesses
@@ -105,7 +105,7 @@ export default function MasterEasyModePage({ user, accessToken, authInitialized 
       }
       setPlayerGuesses(initialGuesses);
     } catch (err) {
-      console.error('❌ Error generating Master Easy puzzle:', err);
+      // console.error('❌ Error generating Master Easy puzzle:', err);
       setError(err.message);
     } finally {
       setIsLoading(false);
@@ -190,8 +190,8 @@ export default function MasterEasyModePage({ user, accessToken, authInitialized 
       setResult(null);
       setError(null);
       
-      console.log('Submitting master mode player assignments:', playerGuesses);
-      console.log('Puzzle data:', puzzle);
+      // console.log('Submitting master mode player assignments:', playerGuesses);
+      // console.log('Puzzle data:', puzzle);
       
       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
       
@@ -205,7 +205,7 @@ export default function MasterEasyModePage({ user, accessToken, authInitialized 
         is_master_mode: true // Flag to indicate this is master mode
       };
       
-      console.log('Master mode request body:', requestBody);
+      // console.log('Master mode request body:', requestBody);
       
       const response = await fetch(`${apiUrl}/puzzle/check`, {
         method: 'POST',
@@ -222,7 +222,7 @@ export default function MasterEasyModePage({ user, accessToken, authInitialized 
       }
 
       const data = await response.json();
-      console.log('Master mode check result:', data);
+      // console.log('Master mode check result:', data);
       
       if (data.valid) {
         setResult('correct');
@@ -273,10 +273,10 @@ export default function MasterEasyModePage({ user, accessToken, authInitialized 
         const data = await response.json();
         setSolution(data.solution);
       } else {
-        console.error('Failed to get solution');
+        // console.error('Failed to get solution');
       }
     } catch (error) {
-      console.error('Error getting solution:', error);
+      // console.error('Error getting solution:', error);
     }
   };
 
@@ -303,10 +303,10 @@ export default function MasterEasyModePage({ user, accessToken, authInitialized 
         const data = await response.json();
         setSolution(data.solution);
       } else {
-        console.error('Failed to get solution');
+        // console.error('Failed to get solution');
       }
     } catch (error) {
-      console.error('Error getting solution:', error);
+      // console.error('Error getting solution:', error);
     }
   };
 

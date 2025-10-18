@@ -29,7 +29,7 @@ export default function LeaderboardPage({ accessToken }) {
 
         setEntries(data.leaderboard || []);
       } catch (err) {
-        console.error('Leaderboard fetch error:', err);
+        // console.error('Leaderboard fetch error:', err);
         setError(err.message || 'Error loading leaderboard');
       } finally {
         setLoading(false);

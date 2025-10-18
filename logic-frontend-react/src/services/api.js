@@ -22,7 +22,7 @@ export const matchAPI = {
     }
 
     const url = `${API_URL}/user/matches?limit=${limit}&order=${order}`;
-    console.log('🔍 API: Fetching matches from:', url);
+    // console.log('🔍 API: Fetching matches from:', url);
     
     const response = await fetch(url, {
       headers: {
@@ -38,7 +38,7 @@ export const matchAPI = {
     }
 
     const data = await response.json();
-    console.log('✅ API: Match data received:', data);
+    // console.log('✅ API: Match data received:', data);
     
     return data;
   },
@@ -58,7 +58,7 @@ export const matchAPI = {
     // Add timestamp for cache busting
     const timestamp = Date.now();
     const url = `${API_URL}/user/matches?limit=${limit}&order=${order}&t=${timestamp}`;
-    console.log('🔄 API: Refreshing matches from:', url);
+    // console.log('🔄 API: Refreshing matches from:', url);
     
     const response = await fetch(url, {
       headers: {
@@ -74,7 +74,7 @@ export const matchAPI = {
     }
 
     const data = await response.json();
-    console.log('✅ API: Refreshed match data received:', data);
+    // console.log('✅ API: Refreshed match data received:', data);
     
     return data;
   }

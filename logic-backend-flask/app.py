@@ -1,5 +1,7 @@
 import os
 import random
+import sys
+import datetime
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from supabase import create_client
@@ -7,8 +9,12 @@ from z3 import Bool, And, Or, Xor, Implies, Not, Sum, If, Solver, sat
 from dotenv import load_dotenv
 from functools import wraps
 import jwt
-import sys
-import datetime
+
+# Fix Unicode encoding for Windows
+if sys.platform == "win32":
+    import codecs
+    sys.stdout = codecs.getwriter("utf-8")(sys.stdout.detach())
+    sys.stderr = codecs.getwriter("utf-8")(sys.stderr.detach())
 
 # Import puzzle mode modules (they are in the same directory)
 import easy_mode
@@ -24,15 +30,15 @@ if puzzle_modes_dir not in sys.path:
 try:
     import extreme_mode
     EXTREME_MODE_AVAILABLE = True
-    print("✅ Extreme mode imported successfully")
+    # print("✅ Extreme mode imported successfully")
     # Test if the function exists
     if hasattr(extreme_mode, 'api_generate_extreme'):
-        print("✅ api_generate_extreme function found")
+        # print("✅ api_generate_extreme function found")
     else:
-        print("❌ api_generate_extreme function NOT found")
+        # print("❌ api_generate_extreme function NOT found")
         EXTREME_MODE_AVAILABLE = False
 except ImportError as e:
-    print(f"⚠️  Extreme mode not available: {e}")
+    # print(f"⚠️  Extreme mode not available: {e}")
     EXTREME_MODE_AVAILABLE = False
 
 # Import elo system
@@ -65,22 +71,22 @@ supabase_jwt_secret = os.getenv("SUPABASE_JWT_SECRET")
 
 # Check if required environment variables are set
 if not supabase_url or not supabase_key or not supabase_jwt_secret:
-    print("⚠️  Warning: Supabase environment variables not configured!")
-    print("   - Practice mode will work, but authentication features will be disabled")
-    print("   - Please set SUPABASE_URL, SUPABASE_SERVICE_KEY, and SUPABASE_JWT_SECRET in .env file")
+    # print("⚠️  Warning: Supabase environment variables not configured!")
+    # print("   - Practice mode will work, but authentication features will be disabled")
+    # print("   - Please set SUPABASE_URL, SUPABASE_SERVICE_KEY, and SUPABASE_JWT_SECRET in .env file")
     supabase = None
 else:
     try:
         supabase = create_client(supabase_url, supabase_key)
-        print("✅ Supabase client initialized successfully")
+        # print("✅ Supabase client initialized successfully")
     except Exception as e:
-        print(f"❌ Failed to initialize Supabase client: {e}")
+        # print(f"❌ Failed to initialize Supabase client: {e}")
         supabase = None
 
 def verify_jwt(token: str) -> dict:
     """Verify JWT token and return user info."""
     if not supabase or not supabase_jwt_secret:
-        print("❌ Cannot verify JWT: Supabase not configured")
+        # print("❌ Cannot verify JWT: Supabase not configured")
         return None
         
     try:
@@ -94,13 +100,13 @@ def verify_jwt(token: str) -> dict:
             if response.user:
                 return {"sub": response.user.id, "email": response.user.email}
         except Exception as e:
-            print(f"❌ Supabase auth verification failed: {e}")
+            # print(f"❌ Supabase auth verification failed: {e}")
         return None
 
 def get_or_create_user_profile(user_id: str, email: str) -> dict:
     """Get user profile from database or create if doesn't exist."""
     if not supabase:
-        print("❌ Cannot access user profile: Supabase not configured")
+        # print("❌ Cannot access user profile: Supabase not configured")
         return {"user_id": user_id, "email": email, "elo": 1000, "username": email.split('@')[0] if email else "User"}
         
     try:
@@ -115,7 +121,7 @@ def get_or_create_user_profile(user_id: str, email: str) -> dict:
                     supabase.table("profiles").update({"username": username}).eq("user_id", user_id).execute()
                     profile["username"] = username
                 except Exception as e:
-                    print(f"Failed to initialize username: {e}")
+                    # print(f"Failed to initialize username: {e}")
                     profile["username"] = username
             return profile
         

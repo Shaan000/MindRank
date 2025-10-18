@@ -31,7 +31,7 @@ export default function EloPage({ user, accessToken }) {
         const data = await response.json();
         setUserStats(data);
       } catch (error) {
-        console.error('Error fetching user stats:', error);
+        // console.error('Error fetching user stats:', error);
         setError(error.message || 'Failed to load user statistics');
       } finally {
         setLoading(false);

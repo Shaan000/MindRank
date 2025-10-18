@@ -25,7 +25,7 @@ export default function ExtremeModePage({ user, accessToken, authInitialized }) 
   const refreshProgressBars = async () => {
     // For authenticated users, we could fetch updated progress here
     // For now, we'll just log that a refresh should happen
-    console.log('🔄 Puzzle completed - progress should be updated in backend');
+    // console.log('🔄 Puzzle completed - progress should be updated in backend');
     
     // If user is authenticated, we could fetch fresh progress data
     if (user && accessToken) {
@@ -40,11 +40,11 @@ export default function ExtremeModePage({ user, accessToken, authInitialized }) 
         
         if (response.ok) {
           const data = await response.json();
-          console.log('✅ Progress refreshed:', data.progress_bars);
+          // console.log('✅ Progress refreshed:', data.progress_bars);
           // The dashboard will refresh when user returns
         }
       } catch (error) {
-        console.error('❌ Error refreshing progress:', error);
+        // console.error('❌ Error refreshing progress:', error);
       }
     }
   };
@@ -93,7 +93,7 @@ export default function ExtremeModePage({ user, accessToken, authInitialized }) 
       }
 
       const data = await response.json();
-      console.log('Puzzle data received:', data); // Debug log
+      // console.log('Puzzle data received:', data); // Debug log
       setPuzzle(data);
       
       // Initialize player guesses
@@ -178,8 +178,8 @@ export default function ExtremeModePage({ user, accessToken, authInitialized }) 
       setError(null); // Clear previous errors
       
       // Debug: Log what we're sending
-      console.log('Submitting player assignments:', playerGuesses);
-      console.log('Puzzle data:', puzzle);
+      // console.log('Submitting player assignments:', playerGuesses);
+      // console.log('Puzzle data:', puzzle);
       
       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
       
@@ -193,8 +193,8 @@ export default function ExtremeModePage({ user, accessToken, authInitialized }) 
         is_first_attempt: !hasAttempted
       };
       
-      console.log('Request body:', requestBody);
-      console.log('API URL:', `${apiUrl}/puzzle/check`);
+      // console.log('Request body:', requestBody);
+      // console.log('API URL:', `${apiUrl}/puzzle/check`);
       
       const response = await fetch(`${apiUrl}/puzzle/check`, {
         method: 'POST',
@@ -205,21 +205,21 @@ export default function ExtremeModePage({ user, accessToken, authInitialized }) 
         body: JSON.stringify(requestBody)
       });
 
-      console.log('Response status:', response.status);
-      console.log('Response ok:', response.ok);
+      // console.log('Response status:', response.status);
+      // console.log('Response ok:', response.ok);
 
       if (!response.ok) {
         let errorMessage = 'Failed to check answer';
         try {
           const responseText = await response.text();
-          console.log('Full error response text:', responseText);
+          // console.log('Full error response text:', responseText);
           const errorData = JSON.parse(responseText);
-          console.log('Error response data:', errorData);
+          // console.log('Error response data:', errorData);
           if (errorData.error) {
             errorMessage = errorData.error;
           }
         } catch (parseError) {
-          console.log('Could not parse error response:', parseError);
+          // console.log('Could not parse error response:', parseError);
           // If we can't parse the response, show more details
           errorMessage = `HTTP ${response.status}: ${response.statusText}`;
         }
@@ -227,14 +227,14 @@ export default function ExtremeModePage({ user, accessToken, authInitialized }) 
       }
 
       const result = await response.json();
-      console.log('Backend response:', result); // Debug log
+      // console.log('Backend response:', result); // Debug log
       
       if (result.valid) {
         setResult('correct');
         
         // Refresh progress bars if function is available (backend will handle progress tracking)
         if (refreshProgressBars) {
-          console.log('🔄 Refreshing progress bars after successful puzzle completion');
+          // console.log('🔄 Refreshing progress bars after successful puzzle completion');
           refreshProgressBars();
         }
         
@@ -258,7 +258,7 @@ export default function ExtremeModePage({ user, accessToken, authInitialized }) 
         // Don't block further submissions - user can try again
       }
     } catch (err) {
-      console.error('Answer check error:', err); // Log full error for debugging
+      // console.error('Answer check error:', err); // Log full error for debugging
       setError(err.message || 'Failed to check answer');
     } finally {
       setIsCheckingAnswer(false);
@@ -295,7 +295,7 @@ export default function ExtremeModePage({ user, accessToken, authInitialized }) 
       const solutionData = await response.json();
       setSolution(solutionData.solution);
     } catch (err) {
-      console.error('Get solution error:', err); // Log full error for debugging
+      // console.error('Get solution error:', err); // Log full error for debugging
       setError('Failed to get solution');
     }
   };

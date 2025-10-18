@@ -18,7 +18,7 @@ export const clearAuthState = async () => {
     // Reload the page to ensure clean state
     window.location.reload();
   } catch (error) {
-    console.error('Error clearing auth state:', error);
+    // console.error('Error clearing auth state:', error);
   }
 };
 
@@ -30,7 +30,7 @@ export const forceSignOut = async () => {
     await supabase.auth.signOut();
     window.location.href = '/';
   } catch (error) {
-    console.error('Error signing out:', error);
+    // console.error('Error signing out:', error);
   }
 };
 
@@ -42,7 +42,7 @@ export const hasActiveSession = async () => {
     const { data: { session } } = await supabase.auth.getSession();
     return !!session?.user;
   } catch (error) {
-    console.error('Error checking session:', error);
+    // console.error('Error checking session:', error);
     return false;
   }
 }; 

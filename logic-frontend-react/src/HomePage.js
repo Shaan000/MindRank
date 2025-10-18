@@ -10,13 +10,14 @@ export default function HomePage() {
 
   useEffect(() => {
     generateSamplePuzzle();
-    console.log('💥 New Homepage Loaded');
+    // console.log('💥 New Homepage Loaded');
   }, []);
 
   const generateSamplePuzzle = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(`http://localhost:5000/puzzle/generate`, {
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+      const response = await fetch(`${apiUrl}/puzzle/generate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -29,7 +30,7 @@ export default function HomePage() {
 
       if (!response.ok) throw new Error('Failed to generate puzzle');
       const data = await response.json();
-      console.log('Puzzle data:', data);
+      // console.log('Puzzle data:', data);
       
       // Transform the data to ensure we have an array of statements
       const transformedData = {
@@ -45,7 +46,7 @@ export default function HomePage() {
       
       setSamplePuzzle(transformedData);
     } catch (error) {
-      console.error('Error generating sample puzzle:', error);
+      // console.error('Error generating sample puzzle:', error);
     } finally {
       setIsLoading(false);
     }
@@ -62,7 +63,7 @@ export default function HomePage() {
       });
       if (error) throw error;
     } catch (error) {
-      console.error('Error signing in with Google:', error);
+      // console.error('Error signing in with Google:', error);
       alert('Sign in failed. Please try again.');
     } finally {
       setIsLoading(false);

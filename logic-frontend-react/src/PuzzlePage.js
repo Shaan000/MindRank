@@ -25,19 +25,19 @@ export default function PuzzlePage({ user, accessToken, authInitialized }) {
   useEffect(() => {
     // Only generate puzzle after auth is initialized (for both ranked and practice)
     if (!authInitialized) {
-      console.log('⏳ Waiting for auth initialization before generating puzzle...');
+      // console.log('⏳ Waiting for auth initialization before generating puzzle...');
       return;
     }
 
     // For ranked mode, we need both user and accessToken
     if (mode === 'ranked' && (!user || !accessToken)) {
-      console.log('❌ Ranked mode requires authentication');
+      // console.log('❌ Ranked mode requires authentication');
       setLoading(false);
       return;
     }
 
     // For practice modes, we can proceed even without authentication
-    console.log(`🎯 Auth initialized, generating ${mode} puzzle...`);
+    // console.log(`🎯 Auth initialized, generating ${mode} puzzle...`);
     generatePuzzle();
   }, [authInitialized, mode, user, accessToken]);
 
@@ -57,7 +57,7 @@ export default function PuzzlePage({ user, accessToken, authInitialized }) {
         ...(mode === 'ranked' && accessToken ? { 'Authorization': `Bearer ${accessToken}` } : {})
       };
 
-      console.log(`🚀 Generating ${mode} puzzle with headers:`, Object.keys(headers));
+      // console.log(`🚀 Generating ${mode} puzzle with headers:`, Object.keys(headers));
 
       const response = await fetch(`${process.env.REACT_APP_API_URL}/puzzle/generate`, {
         method: 'POST',
@@ -71,7 +71,7 @@ export default function PuzzlePage({ user, accessToken, authInitialized }) {
       }
 
       const data = await response.json();
-      console.log('✅ Puzzle generated successfully');
+      // console.log('✅ Puzzle generated successfully');
       
       setPuzzle(data);
       setGuessMap(Object.fromEntries(data.people.map(p => [p, null])));
@@ -81,7 +81,7 @@ export default function PuzzlePage({ user, accessToken, authInitialized }) {
       }
 
     } catch (error) {
-      console.error('❌ Error generating puzzle:', error);
+      // console.error('❌ Error generating puzzle:', error);
       setResult(`Error: ${error.message}`);
     } finally {
       setLoading(false);
@@ -116,7 +116,7 @@ export default function PuzzlePage({ user, accessToken, authInitialized }) {
       });
 
       const data = await response.json();
-      console.log('📊 Check response:', data);
+      // console.log('📊 Check response:', data);
 
       if (data.valid) {
         setResult('🎉 Correct! Well done!');
@@ -130,7 +130,7 @@ export default function PuzzlePage({ user, accessToken, authInitialized }) {
 
       setValidationMessage('');
     } catch (error) {
-      console.error('Error submitting guess:', error);
+      // console.error('Error submitting guess:', error);
       setResult(`Error: ${error.message}`);
     }
   };
@@ -184,14 +184,14 @@ export default function PuzzlePage({ user, accessToken, authInitialized }) {
       }
 
       const solutionData = await solutionResponse.json();
-      console.log('✅ Solution received:', solutionData);
+      // console.log('✅ Solution received:', solutionData);
 
       setSolution(solutionData.solution);
       setShowSolution(true);
       setResult('📖 Solution revealed. Better luck next time!');
 
     } catch (error) {
-      console.error('❌ Error getting solution:', error);
+      // console.error('❌ Error getting solution:', error);
       setResult(`Error: Failed to get solution - ${error.message}`);
     }
   };

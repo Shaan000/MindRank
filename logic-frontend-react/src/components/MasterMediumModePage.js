@@ -24,7 +24,7 @@ export default function MasterMediumModePage({ user, accessToken, authInitialize
   
   // Function to refresh progress bars by calling backend directly
   const refreshProgressBars = async () => {
-    console.log('🔄 Master puzzle completed - progress should be updated in backend');
+    // console.log('🔄 Master puzzle completed - progress should be updated in backend');
     
     if (user && accessToken) {
       try {
@@ -38,10 +38,10 @@ export default function MasterMediumModePage({ user, accessToken, authInitialize
         
         if (response.ok) {
           const data = await response.json();
-          console.log('✅ Master progress refreshed:', data.progress_bars);
+          // console.log('✅ Master progress refreshed:', data.progress_bars);
         }
       } catch (error) {
-        console.error('❌ Error refreshing master progress:', error);
+        // console.error('❌ Error refreshing master progress:', error);
       }
     }
   };
@@ -76,7 +76,7 @@ export default function MasterMediumModePage({ user, accessToken, authInitialize
       const playerCount = Math.floor(Math.random() * 4) + 4; // 4-7 players
       
       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-      console.log('🔥 Generating Master Medium puzzle...');
+      // console.log('🔥 Generating Master Medium puzzle...');
       
       const response = await fetch(`${apiUrl}/puzzle/generate`, {
         method: 'POST',
@@ -95,7 +95,7 @@ export default function MasterMediumModePage({ user, accessToken, authInitialize
       }
 
       const data = await response.json();
-      console.log('🔥 Master Medium puzzle data received:', data);
+      // console.log('🔥 Master Medium puzzle data received:', data);
       setPuzzle(data);
       
       // Initialize player guesses
@@ -105,7 +105,7 @@ export default function MasterMediumModePage({ user, accessToken, authInitialize
       }
       setPlayerGuesses(initialGuesses);
     } catch (err) {
-      console.error('❌ Error generating Master Medium puzzle:', err);
+      // console.error('❌ Error generating Master Medium puzzle:', err);
       setError(err.message);
     } finally {
       setIsLoading(false);
@@ -208,8 +208,8 @@ export default function MasterMediumModePage({ user, accessToken, authInitialize
       setResult(null);
       setError(null);
       
-      console.log('Submitting master medium mode player assignments:', playerGuesses);
-      console.log('Puzzle data:', puzzle);
+      // console.log('Submitting master medium mode player assignments:', playerGuesses);
+      // console.log('Puzzle data:', puzzle);
       
       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
       
@@ -223,7 +223,7 @@ export default function MasterMediumModePage({ user, accessToken, authInitialize
         is_master_mode: true // Flag to indicate this is master mode
       };
       
-      console.log('Master medium mode request body:', requestBody);
+      // console.log('Master medium mode request body:', requestBody);
       
       const response = await fetch(`${apiUrl}/puzzle/check`, {
         method: 'POST',
@@ -240,7 +240,7 @@ export default function MasterMediumModePage({ user, accessToken, authInitialize
       }
 
       const data = await response.json();
-      console.log('Master medium mode check result:', data);
+      // console.log('Master medium mode check result:', data);
       
       if (data.valid) {
         setResult('correct');
@@ -291,10 +291,10 @@ export default function MasterMediumModePage({ user, accessToken, authInitialize
         const data = await response.json();
         setSolution(data.solution);
       } else {
-        console.error('Failed to get solution');
+        // console.error('Failed to get solution');
       }
     } catch (error) {
-      console.error('Error getting solution:', error);
+      // console.error('Error getting solution:', error);
     }
   };
 
@@ -321,10 +321,10 @@ export default function MasterMediumModePage({ user, accessToken, authInitialize
         const data = await response.json();
         setSolution(data.solution);
       } else {
-        console.error('Failed to get solution');
+        // console.error('Failed to get solution');
       }
     } catch (error) {
-      console.error('Error getting solution:', error);
+      // console.error('Error getting solution:', error);
     }
   };
 

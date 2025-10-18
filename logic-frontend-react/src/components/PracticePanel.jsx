@@ -133,7 +133,7 @@ export default function PracticePanel({ user, onBack }) {
       setIsLoading(true);
       setError(null);
       
-      console.log(`🔍 PracticePanel: Generating ${difficulty} puzzle with ${playerCount} players`);
+      // console.log(`🔍 PracticePanel: Generating ${difficulty} puzzle with ${playerCount} players`);
       
       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
       const response = await fetch(`${apiUrl}/puzzle/generate`, {
@@ -147,19 +147,19 @@ export default function PracticePanel({ user, onBack }) {
         })
       });
 
-      console.log(`📡 PracticePanel: Response status: ${response.status}`);
+      // console.log(`📡 PracticePanel: Response status: ${response.status}`);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        console.error('❌ PracticePanel: Backend error:', errorData);
+        // console.error('❌ PracticePanel: Backend error:', errorData);
         throw new Error(errorData.error || 'Failed to generate puzzle');
       }
 
       const data = await response.json();
-      console.log('✅ PracticePanel: Puzzle data received:', data);
+      // console.log('✅ PracticePanel: Puzzle data received:', data);
       setPuzzle(data);
     } catch (err) {
-      console.error('🚨 PracticePanel: Full error details:', err);
+      // console.error('🚨 PracticePanel: Full error details:', err);
       setError(err.message);
     } finally {
       setIsLoading(false);

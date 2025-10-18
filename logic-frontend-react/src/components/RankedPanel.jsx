@@ -151,7 +151,7 @@ export default function RankedPanel({ user, accessToken, onBack }) {
 
   useEffect(() => {
     // Don't auto-generate puzzle anymore - wait for user to click queue button
-    console.log('🎯 RankedPanel loaded, showing warning screen...');
+    // console.log('🎯 RankedPanel loaded, showing warning screen...');
   }, [user, accessToken]);
 
   // Timer effect - start when puzzle is active
@@ -186,7 +186,7 @@ export default function RankedPanel({ user, accessToken, onBack }) {
   }, [timerInterval]);
 
   const handleQueueForRanked = () => {
-    console.log('🚀 User clicked Queue for Ranked, generating puzzle...');
+    // console.log('🚀 User clicked Queue for Ranked, generating puzzle...');
     setShowWarning(false);
     setIsLoading(true);
     generateRankedPuzzle();
@@ -224,7 +224,7 @@ export default function RankedPanel({ user, accessToken, onBack }) {
     // Apply full ELO penalty for abandoning ranked puzzle
     if (puzzle && startTime && user && accessToken) {
       try {
-        console.log('🚪 Applying ELO penalty for abandoning ranked puzzle...');
+        // console.log('🚪 Applying ELO penalty for abandoning ranked puzzle...');
         const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
         const timeTaken = (Date.now() - startTime) / 1000;
         
@@ -238,7 +238,7 @@ export default function RankedPanel({ user, accessToken, onBack }) {
           abandoned: true // Special flag for abandoning
         };
         
-        console.log('📤 Sending abandonment request:', requestBody);
+        // console.log('📤 Sending abandonment request:', requestBody);
         
         const response = await fetch(`${apiUrl}/puzzle/check`, {
           method: 'POST',
@@ -251,15 +251,15 @@ export default function RankedPanel({ user, accessToken, onBack }) {
         
         if (!response.ok) {
           const errorText = await response.text();
-          console.error('❌ Failed to apply ELO penalty:', response.status, errorText);
+          // console.error('❌ Failed to apply ELO penalty:', response.status, errorText);
           throw new Error(`Failed to apply ELO penalty: ${response.status}`);
         }
         
         const resultData = await response.json();
-        console.log('✅ ELO penalty response:', resultData);
+        // console.log('✅ ELO penalty response:', resultData);
         
         if (resultData.elo_change) {
-          console.log(`📉 ELO penalty applied: ${resultData.elo_change.old_elo} → ${resultData.elo_change.new_elo} (${resultData.elo_change.change})`);
+          // console.log(`📉 ELO penalty applied: ${resultData.elo_change.old_elo} → ${resultData.elo_change.new_elo} (${resultData.elo_change.change})`);
           
           // Show user the penalty was applied
           setEloFeedback(`ELO Penalty Applied: ${resultData.elo_change.old_elo} → ${resultData.elo_change.new_elo} (${resultData.elo_change.change})`);
@@ -267,16 +267,16 @@ export default function RankedPanel({ user, accessToken, onBack }) {
           // Wait a moment for user to see the penalty feedback
           await new Promise(resolve => setTimeout(resolve, 1500));
         } else {
-          console.warn('⚠️ No ELO change data returned from server');
+          // console.warn('⚠️ No ELO change data returned from server');
         }
         
       } catch (error) {
-        console.error('❌ Failed to apply ELO penalty:', error);
+        // console.error('❌ Failed to apply ELO penalty:', error);
         alert(`Failed to apply ELO penalty: ${error.message}`);
         return; // Don't leave if penalty failed to apply
       }
     } else {
-      console.log('ℹ️ No penalty applied - missing puzzle/user data');
+      // console.log('ℹ️ No penalty applied - missing puzzle/user data');
     }
     
     setShowLeaveConfirmation(false);
@@ -305,7 +305,7 @@ export default function RankedPanel({ user, accessToken, onBack }) {
       setCurrentTime(0);
 
       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-      console.log('🚀 Generating ranked puzzle...');
+      // console.log('🚀 Generating ranked puzzle...');
       
       const response = await fetch(`${apiUrl}/puzzle/generate`, {
         method: 'POST',
@@ -320,12 +320,12 @@ export default function RankedPanel({ user, accessToken, onBack }) {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('❌ Puzzle generation failed:', response.status, errorText);
+        // console.error('❌ Puzzle generation failed:', response.status, errorText);
         throw new Error(`Failed to generate puzzle: ${response.status}`);
       }
 
       const data = await response.json();
-      console.log('✅ Ranked puzzle generated successfully');
+      // console.log('✅ Ranked puzzle generated successfully');
       
       setPuzzle(data);
       setStartTime(Date.now());
@@ -348,14 +348,14 @@ export default function RankedPanel({ user, accessToken, onBack }) {
         });
       }
       
-      console.log('🔧 Initialized player guesses:', initialGuesses);
-      console.log('🔧 Initialized locked state:', initialLocked);
+      // console.log('🔧 Initialized player guesses:', initialGuesses);
+      // console.log('🔧 Initialized locked state:', initialLocked);
       
       setPlayerGuesses(initialGuesses);
       setIsLocked(initialLocked);
 
     } catch (error) {
-      console.error('❌ Error generating ranked puzzle:', error);
+      // console.error('❌ Error generating ranked puzzle:', error);
       setError(`Failed to generate puzzle: ${error.message}`);
     } finally {
       setIsLoading(false);
@@ -363,11 +363,11 @@ export default function RankedPanel({ user, accessToken, onBack }) {
   };
 
   const handlePlayerGuessChange = (player, value) => {
-    console.log('🎯 Player guess change attempt:', { player, value, currentGuess: playerGuesses[player], isLocked: isLocked[player] });
+    // console.log('🎯 Player guess change attempt:', { player, value, currentGuess: playerGuesses[player], isLocked: isLocked[player] });
     
     // Check if player is already locked
     if (isLocked[player] === true) {
-      console.log('🔒 Player is locked, showing warning');
+      // console.log('🔒 Player is locked, showing warning');
       setWarningMessage('This player assignment is locked and cannot be changed.');
       setShowWarningMessage(true);
       
@@ -381,7 +381,7 @@ export default function RankedPanel({ user, accessToken, onBack }) {
 
     // If player currently has no assignment, set the value and lock it
     if (playerGuesses[player] === null || playerGuesses[player] === undefined) {
-      console.log('✅ Setting player assignment and locking:', { player, value });
+      // console.log('✅ Setting player assignment and locking:', { player, value });
       setPlayerGuesses(prev => ({
         ...prev,
         [player]: value
@@ -392,7 +392,7 @@ export default function RankedPanel({ user, accessToken, onBack }) {
         [player]: true
       }));
     } else {
-      console.log('⚠️ Player already has assignment, cannot change:', { player, currentValue: playerGuesses[player] });
+      // console.log('⚠️ Player already has assignment, cannot change:', { player, currentValue: playerGuesses[player] });
       // This shouldn't happen since locked players should be disabled, but just in case
       setWarningMessage('This player assignment is locked and cannot be changed.');
       setShowWarningMessage(true);
@@ -498,7 +498,7 @@ export default function RankedPanel({ user, accessToken, onBack }) {
             setSolution(solutionData.solution);
           }
         } catch (solutionError) {
-          console.error('Failed to get solution after incorrect answer:', solutionError);
+          // console.error('Failed to get solution after incorrect answer:', solutionError);
         }
         
         if (resultData.elo_change) {
@@ -508,7 +508,7 @@ export default function RankedPanel({ user, accessToken, onBack }) {
         }
       }
     } catch (err) {
-      console.error('Answer check error:', err);
+      // console.error('Answer check error:', err);
       setError(err.message || 'Failed to check answer');
     } finally {
       setIsCheckingAnswer(false);
@@ -530,7 +530,7 @@ export default function RankedPanel({ user, accessToken, onBack }) {
       };
 
       // Debug log to see what we're sending
-      console.log('🔍 Sending solution request:', requestBody);
+      // console.log('🔍 Sending solution request:', requestBody);
       
       const response = await fetch(`${apiUrl}/puzzle/solution`, {
         method: 'POST',
@@ -542,7 +542,7 @@ export default function RankedPanel({ user, accessToken, onBack }) {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('❌ Solution request failed:', response.status, errorText);
+        // console.error('❌ Solution request failed:', response.status, errorText);
         throw new Error(`HTTP ${response.status}: Failed to get solution`);
       }
 
@@ -580,11 +580,11 @@ export default function RankedPanel({ user, accessToken, onBack }) {
             }
           }
         } catch (eloError) {
-          console.error('Failed to update ELO for giving up:', eloError);
+          // console.error('Failed to update ELO for giving up:', eloError);
         }
       }
     } catch (err) {
-      console.error('Get solution error:', err);
+      // console.error('Get solution error:', err);
       setError('Failed to get solution');
     }
   };
@@ -962,7 +962,7 @@ export default function RankedPanel({ user, accessToken, onBack }) {
                 </h4>
                 <div style={playersGridStyle}>
                   {getPlayerList().map(player => {
-                    console.log('🎮 Rendering player:', { player, guess: playerGuesses[player], locked: isLocked[player], hasGivenUp, result });
+                    // console.log('🎮 Rendering player:', { player, guess: playerGuesses[player], locked: isLocked[player], hasGivenUp, result });
                     return (
                     <div key={player} style={playerCardStyle}>
                       <div style={playerNameStyle}>Player {player}</div>
@@ -1018,7 +1018,25 @@ export default function RankedPanel({ user, accessToken, onBack }) {
 
               {result === 'correct' && (
                 <div style={{...cardStyle, background: '#1e4a2a', border: '1px solid #28a745', marginTop: '2rem', textAlign: 'center'}}>
-                  <p style={{margin: 0, color: '#ffffff', fontSize: '1.25rem'}}>🎉 Excellent! You solved the ranked puzzle!</p>
+                  <p style={{margin: '0 0 1.5rem 0', color: '#ffffff', fontSize: '1.25rem'}}>🎉 Excellent! You solved the ranked puzzle!</p>
+                  <button
+                    onClick={generateRankedPuzzle}
+                    style={{
+                      background: '#28a745',
+                      color: '#ffffff',
+                      border: 'none',
+                      padding: '0.75rem 1.5rem',
+                      borderRadius: '6px',
+                      fontSize: '1rem',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                      transition: 'background-color 0.2s ease'
+                    }}
+                    onMouseOver={(e) => e.target.style.background = '#218838'}
+                    onMouseOut={(e) => e.target.style.background = '#28a745'}
+                  >
+                    🎯 Queue another ranked puzzle
+                  </button>
                 </div>
               )}
 

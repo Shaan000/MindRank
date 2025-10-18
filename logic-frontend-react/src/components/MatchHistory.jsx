@@ -27,17 +27,17 @@ export default function MatchHistory({ accessToken, showTitle = true }) {
       
       // Log details about the matches for debugging
       if (sortedMatches.length > 0) {
-        console.log(`📊 MatchHistory: Received ${sortedMatches.length} matches`);
-        console.log('🕐 MatchHistory: Most recent match:', sortedMatches[0]?.created_at);
-        console.log('🕐 MatchHistory: Oldest match:', sortedMatches[sortedMatches.length - 1]?.created_at);
+        // console.log(`📊 MatchHistory: Received ${sortedMatches.length} matches`);
+        // console.log('🕐 MatchHistory: Most recent match:', sortedMatches[0]?.created_at);
+        // console.log('🕐 MatchHistory: Oldest match:', sortedMatches[sortedMatches.length - 1]?.created_at);
       } else {
-        console.log('📊 MatchHistory: No matches received');
+        // console.log('📊 MatchHistory: No matches received');
       }
       
       setMatches(sortedMatches);
     } catch (err) {
       setError(err.message);
-      console.error('❌ MatchHistory: Error fetching matches:', err);
+      // console.error('❌ MatchHistory: Error fetching matches:', err);
     } finally {
       setIsLoading(false);
     }
@@ -57,17 +57,17 @@ export default function MatchHistory({ accessToken, showTitle = true }) {
       
       // Log details about the matches for debugging
       if (sortedMatches.length > 0) {
-        console.log(`📊 MatchHistory: Refreshed ${sortedMatches.length} matches`);
-        console.log('🕐 MatchHistory: Most recent match:', sortedMatches[0]?.created_at);
-        console.log('🕐 MatchHistory: Oldest match:', sortedMatches[sortedMatches.length - 1]?.created_at);
+        // console.log(`📊 MatchHistory: Refreshed ${sortedMatches.length} matches`);
+        // console.log('🕐 MatchHistory: Most recent match:', sortedMatches[0]?.created_at);
+        // console.log('🕐 MatchHistory: Oldest match:', sortedMatches[sortedMatches.length - 1]?.created_at);
       } else {
-        console.log('📊 MatchHistory: No matches received');
+        // console.log('📊 MatchHistory: No matches received');
       }
       
       setMatches(sortedMatches);
     } catch (err) {
       setError(err.message);
-      console.error('❌ MatchHistory: Error refreshing matches:', err);
+      // console.error('❌ MatchHistory: Error refreshing matches:', err);
     } finally {
       setIsRefreshing(false);
     }

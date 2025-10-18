@@ -22,7 +22,7 @@ export default function LandingPage() {
 
   useEffect(() => {
     generateSamplePuzzle();
-    console.log('💥 New Landing Page Loaded - v1.0');
+    // console.log('💥 New Landing Page Loaded - v1.0');
   }, []);
 
   const generateSamplePuzzle = async () => {
@@ -42,7 +42,7 @@ export default function LandingPage() {
 
       if (!response.ok) throw new Error('Failed to generate puzzle');
       const data = await response.json();
-      console.log('Puzzle data:', data);
+      // console.log('Puzzle data:', data);
       
       // Keep statement_data as object to preserve alphabetical keys (A, B, C, etc.)
       setSamplePuzzle(data);
@@ -55,7 +55,7 @@ export default function LandingPage() {
       setSolution(null);
       setFeedbackMessage('');
     } catch (error) {
-      console.error('Error generating sample puzzle:', error);
+      // console.error('Error generating sample puzzle:', error);
     } finally {
       setIsLoading(false);
     }
@@ -127,7 +127,7 @@ export default function LandingPage() {
         setFeedbackMessage('Incorrect. Try again or give up to see the solution.');
       }
     } catch (error) {
-      console.error('Error checking solution:', error);
+      // console.error('Error checking solution:', error);
       setFeedbackMessage('Error checking solution. Please try again.');
     } finally {
       setIsLoading(false);
@@ -152,7 +152,7 @@ export default function LandingPage() {
       });
       if (error) throw error;
     } catch (error) {
-      console.error('Error signing in with Google:', error);
+      // console.error('Error signing in with Google:', error);
       alert('Sign in failed. Please try again.');
     } finally {
       setIsLoading(false);

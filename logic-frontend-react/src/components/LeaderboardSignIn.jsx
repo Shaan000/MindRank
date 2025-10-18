@@ -17,7 +17,7 @@ export default function LeaderboardSignIn() {
       });
       if (error) throw error;
     } catch (error) {
-      console.error('Error signing in with Google:', error);
+      // console.error('Error signing in with Google:', error);
       alert('Sign in failed. Please try again.');
     } finally {
       setIsLoading(false);

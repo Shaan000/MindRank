@@ -26,7 +26,7 @@ export default function EloPanel({ user, eloData: initialEloData, onBack, access
       }
 
       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-      console.log('🔍 EloPanel: Fetching ELO data from:', `${apiUrl}/user/elo`);
+      // console.log('🔍 EloPanel: Fetching ELO data from:', `${apiUrl}/user/elo`);
       
       const response = await fetch(`${apiUrl}/user/elo`, {
         headers: {
@@ -42,13 +42,13 @@ export default function EloPanel({ user, eloData: initialEloData, onBack, access
       }
 
       const data = await response.json();
-      console.log('✅ EloPanel: ELO data received:', data);
+      // console.log('✅ EloPanel: ELO data received:', data);
       setEloData(data);
       // Reset to first page to show most recent matches
       setMatchPage(0);
     } catch (err) {
       setError(err.message);
-      console.error('❌ EloPanel: Error fetching ELO:', err);
+      // console.error('❌ EloPanel: Error fetching ELO:', err);
     } finally {
       setIsLoading(false);
     }
@@ -67,7 +67,7 @@ export default function EloPanel({ user, eloData: initialEloData, onBack, access
       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
       // Add timestamp for cache busting
       const timestamp = Date.now();
-      console.log('🔄 EloPanel: Refreshing ELO data from:', `${apiUrl}/user/elo?t=${timestamp}`);
+      // console.log('🔄 EloPanel: Refreshing ELO data from:', `${apiUrl}/user/elo?t=${timestamp}`);
       
       const response = await fetch(`${apiUrl}/user/elo?t=${timestamp}`, {
         headers: {
@@ -83,15 +83,15 @@ export default function EloPanel({ user, eloData: initialEloData, onBack, access
       }
 
       const data = await response.json();
-      console.log('✅ EloPanel: Refreshed ELO data received:', data);
+      // console.log('✅ EloPanel: Refreshed ELO data received:', data);
       
       // Log details about the matches for debugging
       if (data.matches && data.matches.length > 0) {
-        console.log(`📊 EloPanel: Received ${data.matches.length} matches`);
-        console.log('🕐 EloPanel: Most recent match:', data.matches[0]?.created_at);
-        console.log('🕐 EloPanel: Oldest match:', data.matches[data.matches.length - 1]?.created_at);
+        // console.log(`📊 EloPanel: Received ${data.matches.length} matches`);
+        // console.log('🕐 EloPanel: Most recent match:', data.matches[0]?.created_at);
+        // console.log('🕐 EloPanel: Oldest match:', data.matches[data.matches.length - 1]?.created_at);
       } else {
-        console.log('📊 EloPanel: No matches received');
+        // console.log('📊 EloPanel: No matches received');
       }
       
       setEloData(data);
@@ -99,7 +99,7 @@ export default function EloPanel({ user, eloData: initialEloData, onBack, access
       setMatchPage(0);
     } catch (err) {
       setError(err.message);
-      console.error('❌ EloPanel: Error refreshing ELO:', err);
+      // console.error('❌ EloPanel: Error refreshing ELO:', err);
     } finally {
       setIsRefreshing(false);
     }
