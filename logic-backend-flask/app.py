@@ -34,6 +34,7 @@ try:
     # Test if the function exists
     if hasattr(extreme_mode, 'api_generate_extreme'):
         # print("✅ api_generate_extreme function found")
+        pass
     else:
         # print("❌ api_generate_extreme function NOT found")
         EXTREME_MODE_AVAILABLE = False
@@ -101,6 +102,7 @@ def verify_jwt(token: str) -> dict:
                 return {"sub": response.user.id, "email": response.user.email}
         except Exception as e:
             # print(f"❌ Supabase auth verification failed: {e}")
+            pass
         return None
 
 def get_or_create_user_profile(user_id: str, email: str) -> dict:
