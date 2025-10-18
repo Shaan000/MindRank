@@ -351,11 +351,11 @@ export default function ProtectedApp({ user, accessToken, authInitialized, onLog
       });
       
       // console.log(`🔍 Checking unlock status for ${mode}:`, {
-        progressBarsData,
-        allProgress,
-        easyProgress: allProgress.easy,
-        easySolved: allProgress.easy?.solved
-      });
+      //   progressBarsData,
+      //   allProgress,
+      //   easyProgress: allProgress.easy,
+      //   easySolved: allProgress.easy?.solved
+      // });
       
       switch (mode) {
         case 'easy': 
@@ -395,11 +395,11 @@ export default function ProtectedApp({ user, accessToken, authInitialized, onLog
       });
       
       // console.log(`🔍 Checking master unlock status for ${mode}:`, {
-        masterProgressBarsData,
-        allProgress,
-        easyProgress: allProgress.easy,
-        easySolved: allProgress.easy?.solved
-      });
+      //   masterProgressBarsData,
+      //   allProgress,
+      //   easyProgress: allProgress.easy,
+      //   easySolved: allProgress.easy?.solved
+      // });
       
       switch (mode) {
         case 'easy': 
@@ -432,12 +432,12 @@ export default function ProtectedApp({ user, accessToken, authInitialized, onLog
 
   useEffect(() => {
     // console.log('🔍 ProtectedApp useEffect triggered with:', {
-      authInitialized,
-      user: !!user,
-      userEmail: user?.email,
-      accessToken: !!accessToken,
-      accessTokenLength: accessToken?.length
-    });
+    //   authInitialized,
+    //   user: !!user,
+    //   userEmail: user?.email,
+    //   accessToken: !!accessToken,
+    //   accessTokenLength: accessToken?.length
+    // });
 
     // Check if we should show practice sub-tiles based on navigation state
     if (location.state?.showPracticeSubTiles) {
