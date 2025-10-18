@@ -21,9 +21,44 @@ export default function LandingPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    // Try to load a cached puzzle first for instant display
+    const cachedPuzzle = getCachedSamplePuzzle();
+    if (cachedPuzzle) {
+      setSamplePuzzle(cachedPuzzle);
+    }
+    
+    // Always generate a fresh puzzle in the background
     generateSamplePuzzle();
     // console.log('💥 New Landing Page Loaded - v1.0');
   }, []);
+
+  // Cache management functions
+  const getCachedSamplePuzzle = () => {
+    try {
+      const cached = localStorage.getItem('samplePuzzleCache');
+      if (cached) {
+        const { puzzle, timestamp } = JSON.parse(cached);
+        // Use cache if it's less than 1 hour old
+        if (Date.now() - timestamp < 3600000) {
+          return puzzle;
+        }
+      }
+    } catch (error) {
+      // console.error('Error loading cached puzzle:', error);
+    }
+    return null;
+  };
+
+  const setCachedSamplePuzzle = (puzzle) => {
+    try {
+      localStorage.setItem('samplePuzzleCache', JSON.stringify({
+        puzzle,
+        timestamp: Date.now()
+      }));
+    } catch (error) {
+      // console.error('Error caching puzzle:', error);
+    }
+  };
 
   const generateSamplePuzzle = async () => {
     try {
@@ -46,6 +81,8 @@ export default function LandingPage() {
       
       // Keep statement_data as object to preserve alphabetical keys (A, B, C, etc.)
       setSamplePuzzle(data);
+      // Cache the new puzzle
+      setCachedSamplePuzzle(data);
       // Reset solving state when generating new puzzle
       setIsSolving(false);
       setPlayerGuesses({});

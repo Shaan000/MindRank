@@ -51,10 +51,7 @@ function App() {
       // console.log('🔄 Starting auth initialization...');
       
       try {
-        // Add minimum loading time so you can see the screen
-        const startTime = Date.now();
-        
-        // First, get the current session
+        // Get the current session
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (!mounted) return;
@@ -72,17 +69,7 @@ function App() {
           setAccessToken(null);
         }
 
-        // Ensure minimum 2 second loading time so you can see the screen
-        const elapsed = Date.now() - startTime;
-        const minLoadTime = 2000; // 2 seconds
-        const remainingTime = Math.max(0, minLoadTime - elapsed);
-        
-        if (remainingTime > 0) {
-          // console.log(`⏱️ Waiting ${remainingTime}ms more to show loading screen...`);
-          await new Promise(resolve => setTimeout(resolve, remainingTime));
-        }
-
-        // Mark auth as initialized regardless of whether we found a session
+        // Mark auth as initialized immediately - no artificial delay
         setAuthInitialized(true);
         setInitializing(false);
         // console.log('🎯 Auth initialization complete');
