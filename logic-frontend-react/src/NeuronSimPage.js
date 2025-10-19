@@ -149,6 +149,234 @@ function stepNetwork(net, externalSpikes = []) {
   return result;
 }
 
+// Individual Neuron Display Component
+function NeuronDisplay({ neuronId, neuron, params, spikes, isSpiking, className = '' }) {
+  const canvasRef = useRef(null);
+  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    const updateDimensions = () => {
+      if (canvasRef.current) {
+        const rect = canvasRef.current.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        setDimensions({
+          width: rect.width * dpr,
+          height: rect.height * dpr
+        });
+      }
+    };
+
+    updateDimensions();
+    window.addEventListener('resize', updateDimensions);
+    return () => window.removeEventListener('resize', updateDimensions);
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || dimensions.width === 0) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.width = dimensions.width;
+    canvas.height = dimensions.height;
+    canvas.style.width = `${dimensions.width / (window.devicePixelRatio || 1)}px`;
+    canvas.style.height = `${dimensions.height / (window.devicePixelRatio || 1)}px`;
+
+    // Clear canvas
+    ctx.fillStyle = '#1a1816';
+    ctx.fillRect(0, 0, dimensions.width, dimensions.height);
+
+    const centerX = dimensions.width / 2;
+    const centerY = dimensions.height / 2;
+    const radius = Math.min(dimensions.width, dimensions.height) / 3;
+
+    // Draw neuron membrane
+    ctx.strokeStyle = isSpiking ? '#ff6b6b' : '#769656';
+    ctx.lineWidth = isSpiking ? 4 : 2;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+    ctx.stroke();
+
+    // Draw threshold line
+    ctx.strokeStyle = '#cc8c14';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius * 0.8, 0, 2 * Math.PI);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Draw membrane potential as inner circle
+    const voltageRatio = Math.max(0, Math.min(1, (neuron.V + 80) / 20)); // Map -80 to -60 mV to 0-1
+    const innerRadius = radius * 0.6 * voltageRatio;
+    
+    if (innerRadius > 0) {
+      ctx.fillStyle = isSpiking ? '#ff6b6b' : '#4ade80';
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, innerRadius, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+
+    // Draw spike animation
+    if (isSpiking) {
+      ctx.strokeStyle = '#ff6b6b';
+      ctx.lineWidth = 3;
+      for (let i = 0; i < 8; i++) {
+        const angle = (i * Math.PI) / 4;
+        const x1 = centerX + Math.cos(angle) * radius;
+        const y1 = centerY + Math.sin(angle) * radius;
+        const x2 = centerX + Math.cos(angle) * (radius + 20);
+        const y2 = centerY + Math.sin(angle) * (radius + 20);
+        
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+    }
+
+    // Draw neuron label
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 14px Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(neuronId === 0 ? 'x1' : neuronId === 1 ? 'x2' : 
+                 neuronId === 2 ? 'H_OR' : neuronId === 3 ? 'H_AND' : 'O', 
+                 centerX, centerY);
+
+    // Draw voltage value
+    ctx.fillStyle = '#b0a99f';
+    ctx.font = '10px sans-serif';
+    ctx.fillText(`${neuron.V.toFixed(1)}mV`, centerX, centerY + 25);
+
+  }, [neuron, isSpiking, dimensions]);
+
+  return (
+    <div className={`relative ${className}`}>
+      <canvas
+        ref={canvasRef}
+        className="w-full h-full"
+        style={{ background: '#1a1816' }}
+      />
+    </div>
+  );
+}
+
+// Membrane Trace Component
+function MembraneTrace({ neuronId, voltage, timeWindow = 2000, className = '' }) {
+  const canvasRef = useRef(null);
+  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+  const [traceData, setTraceData] = useState([]);
+
+  useEffect(() => {
+    const updateDimensions = () => {
+      if (canvasRef.current) {
+        const rect = canvasRef.current.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        setDimensions({
+          width: rect.width * dpr,
+          height: rect.height * dpr
+        });
+      }
+    };
+
+    updateDimensions();
+    window.addEventListener('resize', updateDimensions);
+    return () => window.removeEventListener('resize', updateDimensions);
+  }, []);
+
+  useEffect(() => {
+    setTraceData(prev => {
+      const newData = [...prev, { voltage, time: Date.now() }];
+      return newData.slice(-200); // Keep last 200 points
+    });
+  }, [voltage]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || dimensions.width === 0) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.width = dimensions.width;
+    canvas.height = dimensions.height;
+    canvas.style.width = `${dimensions.width / (window.devicePixelRatio || 1)}px`;
+    canvas.style.height = `${dimensions.height / (window.devicePixelRatio || 1)}px`;
+
+    ctx.fillStyle = '#1a1816';
+    ctx.fillRect(0, 0, dimensions.width, dimensions.height);
+
+    if (traceData.length < 2) return;
+
+    const padding = 20;
+    const plotWidth = dimensions.width - 2 * padding;
+    const plotHeight = dimensions.height - 2 * padding;
+
+    // Voltage range
+    const vMin = -80;
+    const vMax = -40;
+    const vRange = vMax - vMin;
+
+    // Draw grid
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const y = padding + (i / 4) * plotHeight;
+      ctx.beginPath();
+      ctx.moveTo(padding, y);
+      ctx.lineTo(padding + plotWidth, y);
+      ctx.stroke();
+    }
+
+    // Draw trace
+    ctx.strokeStyle = '#769656';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+
+    const currentTime = Date.now();
+    const timeStart = currentTime - timeWindow;
+
+    traceData.forEach((point, index) => {
+      if (point.time >= timeStart) {
+        const x = padding + ((point.time - timeStart) / timeWindow) * plotWidth;
+        const y = padding + ((vMax - point.voltage) / vRange) * plotHeight;
+        
+        if (index === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+    });
+
+    ctx.stroke();
+
+    // Draw threshold line
+    ctx.strokeStyle = '#cc8c14';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 5]);
+    const thresholdY = padding + ((vMax - (-50)) / vRange) * plotHeight;
+    ctx.beginPath();
+    ctx.moveTo(padding, thresholdY);
+    ctx.lineTo(padding + plotWidth, thresholdY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+  }, [traceData, dimensions, timeWindow]);
+
+  return (
+    <div className={`relative ${className}`}>
+      <canvas
+        ref={canvasRef}
+        className="w-full h-full"
+        style={{ background: '#1a1816' }}
+      />
+    </div>
+  );
+}
+
 // Canvas Components
 function RasterPlot({ spikes, neuronCount, timeWindow = 2000, className = '' }) {
   const canvasRef = useRef(null);
@@ -641,6 +869,66 @@ export default function NeuronSimPage() {
                 11 (Both inputs)
               </button>
             </div>
+          </div>
+        </div>
+
+        {/* Individual Neuron Displays */}
+        <div style={cardStyle}>
+          <h2 style={{fontSize: '1.5rem', color: '#ffffff', marginBottom: '1.5rem', fontWeight: '600', fontFamily: 'Georgia, serif', textAlign: 'center'}}>
+            Individual Neuron States
+          </h2>
+          <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem'}}>
+            {network.neurons.map((neuron, index) => {
+              const isSpiking = spikesWindow.some(([neuronId, time]) => 
+                neuronId === index && time > network.tMs - 100
+              );
+              return (
+                <div key={index} style={{textAlign: 'center'}}>
+                  <div style={{height: '150px', marginBottom: '0.5rem'}}>
+                    <NeuronDisplay
+                      neuronId={index}
+                      neuron={neuron}
+                      params={network.nParams[index]}
+                      spikes={spikesWindow}
+                      isSpiking={isSpiking}
+                      className="w-full h-full"
+                    />
+                  </div>
+                  <div style={{color: '#b0a99f', fontSize: '0.9rem', fontFamily: 'Georgia, serif'}}>
+                    {index === 0 ? 'x1' : index === 1 ? 'x2' : 
+                     index === 2 ? 'H_OR' : index === 3 ? 'H_AND' : 'O'}
+                  </div>
+                  <div style={{color: '#769656', fontSize: '0.8rem'}}>
+                    {neuron.V.toFixed(1)}mV
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Membrane Traces */}
+        <div style={cardStyle}>
+          <h2 style={{fontSize: '1.5rem', color: '#ffffff', marginBottom: '1.5rem', fontWeight: '600', fontFamily: 'Georgia, serif', textAlign: 'center'}}>
+            Membrane Potential Traces
+          </h2>
+          <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem'}}>
+            {network.neurons.map((neuron, index) => (
+              <div key={index} style={{textAlign: 'center'}}>
+                <div style={{color: '#b0a99f', fontSize: '1rem', marginBottom: '0.5rem', fontFamily: 'Georgia, serif'}}>
+                  {index === 0 ? 'x1' : index === 1 ? 'x2' : 
+                   index === 2 ? 'H_OR' : index === 3 ? 'H_AND' : 'O'} Membrane Trace
+                </div>
+                <div style={{height: '120px', background: '#1a1816', borderRadius: '6px', border: '1px solid #3d3a37'}}>
+                  <MembraneTrace
+                    neuronId={index}
+                    voltage={neuron.V}
+                    timeWindow={2000}
+                    className="w-full h-full"
+                  />
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
