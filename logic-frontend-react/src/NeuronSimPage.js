@@ -125,6 +125,11 @@ function addNeuron(net, opts) {
   net.fanOut.push([]);
   net.fanIn.push([]);
   
+  // Initialize spike history for new neuron
+  if (net.spikeHistory) {
+    net.spikeHistory.push([]);
+  }
+  
   // Connect from inputs if requested
   if (connectFromInputs && neuronId > 1) { // Skip if this is x1 or x2
     const inputWeight = type === NeuronType.INHIBITORY ? -0.02 : 0.02;
@@ -208,6 +213,11 @@ function removeNeuron(net, neuronId) {
   net.meta.splice(neuronId, 1);
   net.fanOut.splice(neuronId, 1);
   net.fanIn.splice(neuronId, 1);
+  
+  // Remove spike history
+  if (net.spikeHistory) {
+    net.spikeHistory.splice(neuronId, 1);
+  }
   
   // Update synapse indices
   for (let i = 0; i < net.sParams.length; i++) {
@@ -301,7 +311,10 @@ function initXORSTDP() {
     inputRatesHz: [15, 15, 0, 0, 0], // Default Poisson rates
     jitterEnabled: true,
     spikeHistory: [[], [], [], [], []], // Track spikes for intrinsic plasticity
-    learningMode: true
+    learningMode: true,
+    enableSTD: true,
+    enableRelease: true,
+    enableLatInh: true
   };
   return network;
 }
@@ -431,19 +444,23 @@ function stepNetwork(net, externalSpikes = []) {
   // Intrinsic Plasticity (homeostatic threshold adjustment)
   if (net.intr.enabled && net.tMs % net.intr.windowMs === 0) {
     for (let i = 2; i < net.neurons.length; i++) { // Skip input neurons
-      const spikesInWindow = net.spikeHistory[i].filter(t => t > net.tMs - net.intr.windowMs);
-      const rate = spikesInWindow.length / (net.intr.windowMs / 1000);
-      const dVth = net.intr.eta * (rate - net.intr.targetHz);
-      net.nParams[i].Vth = clamp(net.nParams[i].Vth + dVth, -55, -45);
+      if (net.spikeHistory && net.spikeHistory[i]) {
+        const spikesInWindow = net.spikeHistory[i].filter(t => t > net.tMs - net.intr.windowMs);
+        const rate = spikesInWindow.length / (net.intr.windowMs / 1000);
+        const dVth = net.intr.eta * (rate - net.intr.targetHz);
+        net.nParams[i].Vth = clamp(net.nParams[i].Vth + dVth, -55, -45);
+      }
     }
   }
 
   // Track spikes for intrinsic plasticity
   for (const spike of result.spikes) {
     const [neuronId, time] = spike;
-    net.spikeHistory[neuronId].push(time);
-    // Keep only recent spikes
-    net.spikeHistory[neuronId] = net.spikeHistory[neuronId].filter(t => t > net.tMs - 1000);
+    if (net.spikeHistory && net.spikeHistory[neuronId]) {
+      net.spikeHistory[neuronId].push(time);
+      // Keep only recent spikes
+      net.spikeHistory[neuronId] = net.spikeHistory[neuronId].filter(t => t > net.tMs - 1000);
+    }
   }
 
   net.tMs += net.dtMs;
