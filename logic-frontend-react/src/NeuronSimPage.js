@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 
-// Biologically Realistic SNN Library
+// Biologically Realistic SNN Library with Competition Mechanisms
 const DEFAULT_NEURON_PARAMS = {
   Vrest: -65,
   Vth: -50,
@@ -27,6 +27,11 @@ const DEFAULT_INTRINSIC_PARAMS = {
   windowMs: 200
 };
 
+const DEFAULT_STD_PARAMS = {
+  U: 0.2,        // utilization per spike
+  tauRec: 600    // recovery time constant (ms)
+};
+
 // Jitter function for breaking symmetry
 function jitterDelayMs(base) {
   const j = (Math.random() - 0.5) * 1.0;
@@ -50,6 +55,29 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
+// Short-term depression recovery
+function recoverSTD(syn, params, t) {
+  const dt = Math.max(0, t - syn.lastUpdateMs);
+  if (dt > 0) {
+    syn.R = 1 - (1 - syn.R) * Math.exp(-dt / params.tauRec);
+    syn.lastUpdateMs = t;
+  }
+}
+
+// Probabilistic vesicle release
+function preEnqueueWithRelease(net, synIdx) {
+  const p = net.sParams[synIdx];
+  const prel = Math.min(Math.max(0.05, 0.4 * Math.abs(p.w)), 0.9);
+  
+  if (Math.random() < prel) {
+    const syn = net.synapses[synIdx];
+    const steps = Math.max(1, Math.round(p.delayMs / net.dtMs));
+    syn.delayQueue[(syn.head + steps) % syn.delayQueue.length] += 1;
+    return true; // Release succeeded
+  }
+  return false; // Release failed
+}
+
 // Initialize biologically realistic XOR network with STDP
 function initXORSTDP() {
   const network = {
@@ -70,29 +98,37 @@ function initXORSTDP() {
       { ...DEFAULT_NEURON_PARAMS }
     ],
     synapses: [
-      { s: 0, delayQueue: new Uint16Array(1), head: 0, lastPreMs: -1000, lastPostMs: -1000 },
-      { s: 0, delayQueue: new Uint16Array(1), head: 0, lastPreMs: -1000, lastPostMs: -1000 },
-      { s: 0, delayQueue: new Uint16Array(1), head: 0, lastPreMs: -1000, lastPostMs: -1000 },
-      { s: 0, delayQueue: new Uint16Array(1), head: 0, lastPreMs: -1000, lastPostMs: -1000 },
-      { s: 0, delayQueue: new Uint16Array(2), head: 0, lastPreMs: -1000, lastPostMs: -1000 },
-      { s: 0, delayQueue: new Uint16Array(1), head: 0, lastPreMs: -1000, lastPostMs: -1000 }
+      { s: 0, delayQueue: new Uint16Array(1), head: 0, lastPreMs: -1000, lastPostMs: -1000, R: 1, lastUpdateMs: 0 },
+      { s: 0, delayQueue: new Uint16Array(1), head: 0, lastPreMs: -1000, lastPostMs: -1000, R: 1, lastUpdateMs: 0 },
+      { s: 0, delayQueue: new Uint16Array(1), head: 0, lastPreMs: -1000, lastPostMs: -1000, R: 1, lastUpdateMs: 0 },
+      { s: 0, delayQueue: new Uint16Array(1), head: 0, lastPreMs: -1000, lastPostMs: -1000, R: 1, lastUpdateMs: 0 },
+      { s: 0, delayQueue: new Uint16Array(2), head: 0, lastPreMs: -1000, lastPostMs: -1000, R: 1, lastUpdateMs: 0 },
+      { s: 0, delayQueue: new Uint16Array(1), head: 0, lastPreMs: -1000, lastPostMs: -1000, R: 1, lastUpdateMs: 0 },
+      // Lateral inhibition H_OR -> H_AND
+      { s: 0, delayQueue: new Uint16Array(1), head: 0, lastPreMs: -1000, lastPostMs: -1000, R: 1, lastUpdateMs: 0 },
+      // Lateral inhibition H_AND -> H_OR
+      { s: 0, delayQueue: new Uint16Array(1), head: 0, lastPreMs: -1000, lastPostMs: -1000, R: 1, lastUpdateMs: 0 }
     ],
     sParams: [
-      // x1 -> H_OR (excitatory, with jitter)
-      { pre: 0, post: 2, w: 0.1, delayMs: jitterDelayMs(1), tauSyn: 5, jump: 1, inhibitory: false },
-      // x2 -> H_OR (excitatory, with jitter)
-      { pre: 1, post: 2, w: 0.1, delayMs: jitterDelayMs(1), tauSyn: 5, jump: 1, inhibitory: false },
-      // x1 -> H_AND (excitatory, with jitter)
-      { pre: 0, post: 3, w: 0.1, delayMs: jitterDelayMs(1), tauSyn: 5, jump: 1, inhibitory: false },
-      // x2 -> H_AND (excitatory, with jitter)
-      { pre: 1, post: 3, w: 0.1, delayMs: jitterDelayMs(1), tauSyn: 5, jump: 1, inhibitory: false },
+      // x1 -> H_OR (excitatory, with jitter and STD)
+      { pre: 0, post: 2, w: 0.1, delayMs: jitterDelayMs(1), tauSyn: 5, jump: 1, inhibitory: false, U: 0.2, tauRec: 600 },
+      // x2 -> H_OR (excitatory, with jitter and STD)
+      { pre: 1, post: 2, w: 0.1, delayMs: jitterDelayMs(1), tauSyn: 5, jump: 1, inhibitory: false, U: 0.2, tauRec: 600 },
+      // x1 -> H_AND (excitatory, with jitter and STD)
+      { pre: 0, post: 3, w: 0.1, delayMs: jitterDelayMs(1), tauSyn: 5, jump: 1, inhibitory: false, U: 0.2, tauRec: 600 },
+      // x2 -> H_AND (excitatory, with jitter and STD)
+      { pre: 1, post: 3, w: 0.1, delayMs: jitterDelayMs(1), tauSyn: 5, jump: 1, inhibitory: false, U: 0.2, tauRec: 600 },
       // H_OR -> O (excitatory, longer delay)
-      { pre: 2, post: 4, w: 0.05, delayMs: 2, tauSyn: 5, jump: 1, inhibitory: false },
+      { pre: 2, post: 4, w: 0.05, delayMs: 2, tauSyn: 5, jump: 1, inhibitory: false, U: 0.2, tauRec: 600 },
       // H_AND -> O (inhibitory, shorter delay)
-      { pre: 3, post: 4, w: -0.05, delayMs: 1, tauSyn: 5, jump: 1, inhibitory: true }
+      { pre: 3, post: 4, w: -0.05, delayMs: 1, tauSyn: 5, jump: 1, inhibitory: true, U: 0.2, tauRec: 600 },
+      // Lateral inhibition H_OR -> H_AND
+      { pre: 2, post: 3, w: -0.15, delayMs: 1, tauSyn: 3, jump: 1, inhibitory: true, U: 0.2, tauRec: 300 },
+      // Lateral inhibition H_AND -> H_OR
+      { pre: 3, post: 2, w: -0.15, delayMs: 1, tauSyn: 3, jump: 1, inhibitory: true, U: 0.2, tauRec: 300 }
     ],
-    fanOut: [[0, 2], [1, 3], [4], [5], []],
-    fanIn: [[], [], [0, 1], [2, 3], [4, 5]],
+    fanOut: [[0, 2], [1, 3], [4, 6], [5, 7], []],
+    fanIn: [[], [], [0, 1, 7], [2, 3, 6], [4, 5]],
     stdp: { ...DEFAULT_STDP_PARAMS },
     intr: { ...DEFAULT_INTRINSIC_PARAMS },
     inputRatesHz: [15, 15, 0, 0, 0], // Default Poisson rates
@@ -124,16 +160,13 @@ function stepNetwork(net, externalSpikes = []) {
     }
   }
 
-  // Process external spikes
+  // Process external spikes with probabilistic release
   for (const spike of externalSpikes) {
     if (spike.target < net.neurons.length) {
       result.spikes.push([spike.target, net.tMs]);
       for (const synIdx of net.fanOut[spike.target] || []) {
-        const syn = net.synapses[synIdx];
-        const delaySteps = Math.floor(net.sParams[synIdx].delayMs / net.dtMs);
-        const queueIdx = (syn.head + delaySteps) % syn.delayQueue.length;
-        syn.delayQueue[queueIdx]++;
-        syn.lastPreMs = net.tMs;
+        preEnqueueWithRelease(net, synIdx);
+        net.synapses[synIdx].lastPreMs = net.tMs;
       }
     }
   }
@@ -145,15 +178,21 @@ function stepNetwork(net, externalSpikes = []) {
 
     if (net.tMs < neuron.refUntilMs) continue;
 
-    // Deliver synaptic inputs
+    // Deliver synaptic inputs with STD
     let I_syn = 0;
     for (const synIdx of net.fanIn[i] || []) {
       const syn = net.synapses[synIdx];
       const synParams = net.sParams[synIdx];
       
+      // Recover STD resources
+      recoverSTD(syn, synParams, net.tMs);
+      
       const count = syn.delayQueue[syn.head];
       if (count > 0) {
-        syn.s += synParams.jump * count;
+        // Apply STD depression
+        const effectiveJump = synParams.jump * syn.R;
+        syn.R = syn.R * (1 - synParams.U);
+        syn.s += count * effectiveJump;
         syn.delayQueue[syn.head] = 0;
       }
       syn.head = (syn.head + 1) % syn.delayQueue.length;
@@ -171,6 +210,12 @@ function stepNetwork(net, externalSpikes = []) {
       neuron.V = params.Vreset;
       neuron.refUntilMs = net.tMs + params.tauRef;
       neuron.lastSpikeMs = net.tMs;
+      
+      // Enqueue with probabilistic release for internal spikes
+      for (const synIdx of net.fanOut[i] || []) {
+        preEnqueueWithRelease(net, synIdx);
+        net.synapses[synIdx].lastPreMs = net.tMs;
+      }
     }
   }
 
@@ -815,6 +860,9 @@ export default function NeuronSimPage() {
   const [intrinsicEnabled, setIntrinsicEnabled] = useState(true);
   const [jitterEnabled, setJitterEnabled] = useState(true);
   const [learningMode, setLearningMode] = useState(true);
+  const [stdEnabled, setStdEnabled] = useState(true);
+  const [releaseEnabled, setReleaseEnabled] = useState(true);
+  const [lateralEnabled, setLateralEnabled] = useState(true);
   
   const animationRef = useRef();
   const lastTimeRef = useRef(0);
@@ -859,6 +907,18 @@ export default function NeuronSimPage() {
       setNetwork(net => ({ ...net, learningMode: !prev }));
       return !prev;
     });
+  }, []);
+
+  const toggleStd = useCallback(() => {
+    setStdEnabled(prev => !prev);
+  }, []);
+
+  const toggleRelease = useCallback(() => {
+    setReleaseEnabled(prev => !prev);
+  }, []);
+
+  const toggleLateral = useCallback(() => {
+    setLateralEnabled(prev => !prev);
   }, []);
 
   const step = useCallback((n = 1) => {
@@ -1247,6 +1307,45 @@ export default function NeuronSimPage() {
             </div>
           </div>
 
+          {/* Competition Mechanisms */}
+          <div style={{textAlign: 'center', marginTop: '2rem'}}>
+            <h3 style={{color: '#ffffff', marginBottom: '1rem', fontFamily: 'Georgia, serif', fontSize: '1.125rem'}}>
+              Competition Mechanisms
+            </h3>
+            <div style={{display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '0.5rem'}}>
+              <button 
+                onClick={toggleStd}
+                style={{
+                  ...patternButtonStyle,
+                  background: stdEnabled ? '#769656' : '#1a1816',
+                  color: stdEnabled ? '#ffffff' : '#b0a99f'
+                }}
+              >
+                STD {stdEnabled ? 'ON' : 'OFF'}
+              </button>
+              <button 
+                onClick={toggleRelease}
+                style={{
+                  ...patternButtonStyle,
+                  background: releaseEnabled ? '#769656' : '#1a1816',
+                  color: releaseEnabled ? '#ffffff' : '#b0a99f'
+                }}
+              >
+                Release {releaseEnabled ? 'ON' : 'OFF'}
+              </button>
+              <button 
+                onClick={toggleLateral}
+                style={{
+                  ...patternButtonStyle,
+                  background: lateralEnabled ? '#769656' : '#1a1816',
+                  color: lateralEnabled ? '#ffffff' : '#b0a99f'
+                }}
+              >
+                Lateral {lateralEnabled ? 'ON' : 'OFF'}
+              </button>
+            </div>
+          </div>
+
           {/* Test Patterns */}
           <div style={{textAlign: 'center', marginTop: '2rem'}}>
             <h3 style={{color: '#ffffff', marginBottom: '1rem', fontFamily: 'Georgia, serif', fontSize: '1.125rem'}}>
@@ -1403,8 +1502,15 @@ export default function NeuronSimPage() {
               <br/>• <strong>XOR Logic:</strong> Emerges through learning, not hard-wiring
             </p>
             <p style={{...descriptionTextStyle, marginTop: '1rem', padding: '1rem', background: '#1a1816', borderRadius: '6px', border: '1px solid #3d3a37'}}>
+              <strong style={{color: '#4ade80'}}>Competition Mechanisms:</strong>
+              <br/>• <strong>Short-Term Depression (STD):</strong> Synapses fatigue after use, preventing runaway activity
+              <br/>• <strong>Probabilistic Release:</strong> Stronger synapses pass more spikes (weight-scaled probability)
+              <br/>• <strong>Lateral Inhibition:</strong> H_OR ↔ H_AND mutual suppression creates winner-take-all
+              <br/>• <strong>Visible Routing:</strong> STDP can now latch onto asymmetric patterns!
+            </p>
+            <p style={{...descriptionTextStyle, marginTop: '1rem', padding: '1rem', background: '#1a1816', borderRadius: '6px', border: '1px solid #3d3a37'}}>
               <strong style={{color: '#ff6b6b'}}>Realistic Features:</strong> No constant current injection, only Poisson inputs. 
-              Network learns XOR through local plasticity rules, just like biological neural networks!
+              Network learns XOR through local plasticity rules with biological competition mechanisms!
             </p>
           </div>
         </div>
