@@ -339,13 +339,16 @@ function NetworkGraph({ network, spikes, className = '' }) {
     ctx.fillStyle = '#1a1816';
     ctx.fillRect(0, 0, dimensions.width, dimensions.height);
 
-    // Define neuron positions in a much larger, well-spaced network layout
+    // Define neuron positions optimized for the larger container
+    const centerX = dimensions.width / 2;
+    const centerY = dimensions.height / 2;
+    
     const neuronPositions = [
-      { x: 150, y: 150 },   // x1
-      { x: 150, y: 350 },   // x2
-      { x: 400, y: 200 },   // H_OR
-      { x: 400, y: 300 },   // H_AND
-      { x: 650, y: 250 }    // O
+      { x: centerX - 200, y: centerY - 100 },   // x1
+      { x: centerX - 200, y: centerY + 100 },   // x2
+      { x: centerX, y: centerY - 50 },          // H_OR
+      { x: centerX, y: centerY + 50 },          // H_AND
+      { x: centerX + 200, y: centerY }          // O
     ];
 
     // Draw connections first (behind neurons)
@@ -485,11 +488,15 @@ function NetworkGraph({ network, spikes, className = '' }) {
   }, [network, spikes, signalParticles, dimensions]);
 
   return (
-    <div className={`relative ${className}`}>
+    <div className={`relative ${className}`} style={{ width: '100%', height: '100%' }}>
       <canvas
         ref={canvasRef}
-        className="w-full h-full"
-        style={{ background: '#1a1816' }}
+        style={{ 
+          background: '#1a1816', 
+          width: '100%', 
+          height: '100%',
+          display: 'block'
+        }}
       />
     </div>
   );
@@ -861,7 +868,7 @@ export default function NeuronSimPage() {
     borderRadius: '12px',
     padding: '2rem',
     margin: '1.5rem auto',
-    maxWidth: '800px',
+    maxWidth: '1200px',
     boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15), 0 0 20px rgba(0, 255, 0, 0.3)',
     border: '1px solid #00ff00'
   };
@@ -1169,7 +1176,7 @@ export default function NeuronSimPage() {
           <h2 style={{fontSize: '1.5rem', color: '#ffffff', marginBottom: '1.5rem', fontWeight: '600', fontFamily: 'Georgia, serif', textAlign: 'center'}}>
             Neural Network with Live Signal Propagation
           </h2>
-          <div style={{height: '600px', width: '100%', background: '#1a1816', borderRadius: '8px', border: '1px solid #3d3a37', marginBottom: '1rem', overflow: 'hidden'}}>
+          <div style={{height: '800px', width: '100%', background: '#1a1816', borderRadius: '8px', border: '1px solid #3d3a37', marginBottom: '1rem', overflow: 'hidden', position: 'relative'}}>
             <NetworkGraph
               network={network}
               spikes={spikesWindow}
