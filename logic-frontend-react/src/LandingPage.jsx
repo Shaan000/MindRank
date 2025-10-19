@@ -567,6 +567,12 @@ export default function LandingPage() {
         >
           📊 Leaderboard
         </button>
+        <button 
+          style={footerButtonStyle}
+          onClick={() => window.open('/neuron-sim', '_blank')}
+        >
+          🧠 Neuron Simulation
+        </button>
       </footer>
     </div>
   );

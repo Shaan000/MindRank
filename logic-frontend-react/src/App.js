@@ -19,6 +19,7 @@ import MasterMediumModePage from './components/MasterMediumModePage';
 import MasterHardModePage from './components/MasterHardModePage';
 import MasterExtremeModePage from './components/MasterExtremeModePage';
 import Instructions from './components/Instructions';
+import NeuronSimPage from './NeuronSimPage';
 import { supabase } from './supabase';
 
 // Only protect "ranked" puzzles; practice always open
@@ -308,6 +309,12 @@ function App() {
       <Route 
         path="/instructions" 
         element={<Instructions onBack={() => window.history.back()} />} 
+      />
+
+      {/* Neuron Simulation Route - Available to everyone */}
+      <Route 
+        path="/neuron-sim" 
+        element={<NeuronSimPage />} 
       />
 
       <Route
