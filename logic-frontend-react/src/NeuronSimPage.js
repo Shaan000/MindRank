@@ -263,6 +263,228 @@ function NeuronDisplay({ neuronId, neuron, params, spikes, isSpiking, className 
   );
 }
 
+// Network Graph Component with Animated Connections
+function NetworkGraph({ network, spikes, className = '' }) {
+  const canvasRef = useRef(null);
+  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+  const [signalParticles, setSignalParticles] = useState([]);
+
+  useEffect(() => {
+    const updateDimensions = () => {
+      if (canvasRef.current) {
+        const rect = canvasRef.current.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        setDimensions({
+          width: rect.width * dpr,
+          height: rect.height * dpr
+        });
+      }
+    };
+
+    updateDimensions();
+    window.addEventListener('resize', updateDimensions);
+    return () => window.removeEventListener('resize', updateDimensions);
+  }, []);
+
+  // Update signal particles when spikes occur
+  useEffect(() => {
+    const recentSpikes = spikes.filter(([neuronId, time]) => time > network.tMs - 50);
+    recentSpikes.forEach(([neuronId, time]) => {
+      // Find outgoing connections from this neuron
+      const outgoingSynapses = network.fanOut[neuronId] || [];
+      outgoingSynapses.forEach(synIdx => {
+        const synParams = network.sParams[synIdx];
+        const delay = synParams.delayMs;
+        
+        setSignalParticles(prev => [...prev, {
+          id: Date.now() + Math.random(),
+          from: neuronId,
+          to: synParams.post,
+          startTime: time,
+          delay: delay,
+          progress: 0,
+          color: synParams.inhibitory ? '#ff6b6b' : '#4ade80'
+        }]);
+      });
+    });
+  }, [spikes, network]);
+
+  // Update particle positions
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setSignalParticles(prev => 
+        prev.map(particle => ({
+          ...particle,
+          progress: Math.min(1, (network.tMs - particle.startTime) / particle.delay)
+        })).filter(particle => particle.progress < 1)
+      );
+    }, 50);
+
+    return () => clearInterval(interval);
+  }, [network.tMs]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || dimensions.width === 0) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.width = dimensions.width;
+    canvas.height = dimensions.height;
+    canvas.style.width = `${dimensions.width / (window.devicePixelRatio || 1)}px`;
+    canvas.style.height = `${dimensions.height / (window.devicePixelRatio || 1)}px`;
+
+    // Clear canvas
+    ctx.fillStyle = '#1a1816';
+    ctx.fillRect(0, 0, dimensions.width, dimensions.height);
+
+    // Define neuron positions in a network layout
+    const neuronPositions = [
+      { x: 100, y: 100 },   // x1
+      { x: 100, y: 300 },   // x2
+      { x: 300, y: 150 },   // H_OR
+      { x: 300, y: 250 },    // H_AND
+      { x: 500, y: 200 }    // O
+    ];
+
+    // Draw connections first (behind neurons)
+    network.sParams.forEach((synParams, index) => {
+      const fromPos = neuronPositions[synParams.pre];
+      const toPos = neuronPositions[synParams.post];
+      
+      if (!fromPos || !toPos) return;
+
+      // Connection color and style
+      const weight = Math.abs(synParams.w);
+      const alpha = Math.min(1, weight / 2);
+      const color = synParams.inhibitory ? 
+        `rgba(255, 107, 107, ${alpha})` : 
+        `rgba(74, 222, 128, ${alpha})`;
+      
+      ctx.strokeStyle = color;
+      ctx.lineWidth = Math.max(1, weight * 3);
+      ctx.beginPath();
+      ctx.moveTo(fromPos.x, fromPos.y);
+      ctx.lineTo(toPos.x, toPos.y);
+      ctx.stroke();
+
+      // Draw arrowhead
+      const angle = Math.atan2(toPos.y - fromPos.y, toPos.x - fromPos.x);
+      const arrowLength = 15;
+      const arrowAngle = Math.PI / 6;
+      
+      ctx.beginPath();
+      ctx.moveTo(toPos.x, toPos.y);
+      ctx.lineTo(
+        toPos.x - arrowLength * Math.cos(angle - arrowAngle),
+        toPos.y - arrowLength * Math.sin(angle - arrowAngle)
+      );
+      ctx.moveTo(toPos.x, toPos.y);
+      ctx.lineTo(
+        toPos.x - arrowLength * Math.cos(angle + arrowAngle),
+        toPos.y - arrowLength * Math.sin(angle + arrowAngle)
+      );
+      ctx.stroke();
+    });
+
+    // Draw signal particles
+    signalParticles.forEach(particle => {
+      const fromPos = neuronPositions[particle.from];
+      const toPos = neuronPositions[particle.to];
+      
+      if (!fromPos || !toPos) return;
+
+      const x = fromPos.x + (toPos.x - fromPos.x) * particle.progress;
+      const y = fromPos.y + (toPos.y - fromPos.y) * particle.progress;
+
+      ctx.fillStyle = particle.color;
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, 2 * Math.PI);
+      ctx.fill();
+
+      // Add glow effect
+      ctx.shadowColor = particle.color;
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.arc(x, y, 2, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    });
+
+    // Draw neurons
+    network.neurons.forEach((neuron, index) => {
+      const pos = neuronPositions[index];
+      if (!pos) return;
+
+      const isSpiking = spikes.some(([neuronId, time]) => 
+        neuronId === index && time > network.tMs - 100
+      );
+
+      // Neuron membrane
+      ctx.strokeStyle = isSpiking ? '#ff6b6b' : '#769656';
+      ctx.lineWidth = isSpiking ? 4 : 2;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, 30, 0, 2 * Math.PI);
+      ctx.stroke();
+
+      // Membrane potential visualization
+      const voltageRatio = Math.max(0, Math.min(1, (neuron.V + 80) / 20));
+      const innerRadius = 20 * voltageRatio;
+      
+      if (innerRadius > 0) {
+        ctx.fillStyle = isSpiking ? '#ff6b6b' : '#4ade80';
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, innerRadius, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+
+      // Spike animation
+      if (isSpiking) {
+        ctx.strokeStyle = '#ff6b6b';
+        ctx.lineWidth = 3;
+        for (let i = 0; i < 8; i++) {
+          const angle = (i * Math.PI) / 4;
+          const x1 = pos.x + Math.cos(angle) * 30;
+          const y1 = pos.y + Math.sin(angle) * 30;
+          const x2 = pos.x + Math.cos(angle) * 45;
+          const y2 = pos.y + Math.sin(angle) * 45;
+          
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.stroke();
+        }
+      }
+
+      // Neuron label
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 12px Georgia, serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const label = index === 0 ? 'x1' : index === 1 ? 'x2' : 
+                   index === 2 ? 'H_OR' : index === 3 ? 'H_AND' : 'O';
+      ctx.fillText(label, pos.x, pos.y);
+
+      // Voltage display
+      ctx.fillStyle = '#b0a99f';
+      ctx.font = '10px sans-serif';
+      ctx.fillText(`${neuron.V.toFixed(1)}mV`, pos.x, pos.y + 40);
+    });
+
+  }, [network, spikes, signalParticles, dimensions]);
+
+  return (
+    <div className={`relative ${className}`}>
+      <canvas
+        ref={canvasRef}
+        className="w-full h-full"
+        style={{ background: '#1a1816' }}
+      />
+    </div>
+  );
+}
+
 // Membrane Trace Component
 function MembraneTrace({ neuronId, voltage, timeWindow = 2000, className = '' }) {
   const canvasRef = useRef(null);
@@ -929,6 +1151,25 @@ export default function NeuronSimPage() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+
+        {/* Network Graph with Animated Connections */}
+        <div style={cardStyle}>
+          <h2 style={{fontSize: '1.5rem', color: '#ffffff', marginBottom: '1.5rem', fontWeight: '600', fontFamily: 'Georgia, serif', textAlign: 'center'}}>
+            Neural Network with Live Signal Propagation
+          </h2>
+          <div style={{height: '400px', background: '#1a1816', borderRadius: '8px', border: '1px solid #3d3a37', marginBottom: '1rem'}}>
+            <NetworkGraph
+              network={network}
+              spikes={spikesWindow}
+              className="w-full h-full"
+            />
+          </div>
+          <div style={{textAlign: 'center', color: '#b0a99f', fontSize: '0.9rem'}}>
+            <span style={{color: '#4ade80'}}>●</span> Excitatory connections &nbsp;&nbsp;
+            <span style={{color: '#ff6b6b'}}>●</span> Inhibitory connections &nbsp;&nbsp;
+            <span style={{color: '#ff6b6b'}}>⚡</span> Moving signals
           </div>
         </div>
 
