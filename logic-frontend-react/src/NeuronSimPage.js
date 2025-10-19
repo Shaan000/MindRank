@@ -288,13 +288,13 @@ function NetworkGraph({ network, spikes, className = '' }) {
 
   // Update signal particles when spikes occur
   useEffect(() => {
-    const recentSpikes = spikes.filter(([neuronId, time]) => time > network.tMs - 50);
+    const recentSpikes = spikes.filter(([neuronId, time]) => time > network.tMs - 100);
     recentSpikes.forEach(([neuronId, time]) => {
       // Find outgoing connections from this neuron
       const outgoingSynapses = network.fanOut[neuronId] || [];
       outgoingSynapses.forEach(synIdx => {
         const synParams = network.sParams[synIdx];
-        const delay = synParams.delayMs;
+        const delay = Math.max(100, synParams.delayMs); // Ensure minimum delay for visibility
         
         setSignalParticles(prev => [...prev, {
           id: Date.now() + Math.random(),
@@ -309,7 +309,7 @@ function NetworkGraph({ network, spikes, className = '' }) {
     });
   }, [spikes, network]);
 
-  // Update particle positions
+  // Update particle positions (faster updates for smoother animation)
   useEffect(() => {
     const interval = setInterval(() => {
       setSignalParticles(prev => 
@@ -318,7 +318,7 @@ function NetworkGraph({ network, spikes, className = '' }) {
           progress: Math.min(1, (network.tMs - particle.startTime) / particle.delay)
         })).filter(particle => particle.progress < 1)
       );
-    }, 50);
+    }, 30); // Faster updates for smoother animation
 
     return () => clearInterval(interval);
   }, [network.tMs]);
@@ -339,13 +339,13 @@ function NetworkGraph({ network, spikes, className = '' }) {
     ctx.fillStyle = '#1a1816';
     ctx.fillRect(0, 0, dimensions.width, dimensions.height);
 
-    // Define neuron positions in a network layout
+    // Define neuron positions in a much larger, well-spaced network layout
     const neuronPositions = [
-      { x: 100, y: 100 },   // x1
-      { x: 100, y: 300 },   // x2
-      { x: 300, y: 150 },   // H_OR
-      { x: 300, y: 250 },    // H_AND
-      { x: 500, y: 200 }    // O
+      { x: 150, y: 150 },   // x1
+      { x: 150, y: 350 },   // x2
+      { x: 400, y: 200 },   // H_OR
+      { x: 400, y: 300 },   // H_AND
+      { x: 650, y: 250 }    // O
     ];
 
     // Draw connections first (behind neurons)
@@ -398,18 +398,28 @@ function NetworkGraph({ network, spikes, className = '' }) {
       const x = fromPos.x + (toPos.x - fromPos.x) * particle.progress;
       const y = fromPos.y + (toPos.y - fromPos.y) * particle.progress;
 
+      // Draw larger, more visible signal particles
       ctx.fillStyle = particle.color;
+      ctx.beginPath();
+      ctx.arc(x, y, 8, 0, 2 * Math.PI);
+      ctx.fill();
+
+      // Add stronger glow effect for better visibility
+      ctx.shadowColor = particle.color;
+      ctx.shadowBlur = 15;
       ctx.beginPath();
       ctx.arc(x, y, 4, 0, 2 * Math.PI);
       ctx.fill();
-
-      // Add glow effect
-      ctx.shadowColor = particle.color;
-      ctx.shadowBlur = 10;
-      ctx.beginPath();
-      ctx.arc(x, y, 2, 0, 2 * Math.PI);
-      ctx.fill();
       ctx.shadowBlur = 0;
+
+      // Add pulsing effect
+      const pulseSize = 6 + 2 * Math.sin(Date.now() * 0.01);
+      ctx.fillStyle = particle.color;
+      ctx.globalAlpha = 0.6;
+      ctx.beginPath();
+      ctx.arc(x, y, pulseSize, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.globalAlpha = 1.0;
     });
 
     // Draw neurons
@@ -421,16 +431,16 @@ function NetworkGraph({ network, spikes, className = '' }) {
         neuronId === index && time > network.tMs - 100
       );
 
-      // Neuron membrane
+      // Neuron membrane (larger for better visibility)
       ctx.strokeStyle = isSpiking ? '#ff6b6b' : '#769656';
-      ctx.lineWidth = isSpiking ? 4 : 2;
+      ctx.lineWidth = isSpiking ? 6 : 3;
       ctx.beginPath();
-      ctx.arc(pos.x, pos.y, 30, 0, 2 * Math.PI);
+      ctx.arc(pos.x, pos.y, 40, 0, 2 * Math.PI);
       ctx.stroke();
 
       // Membrane potential visualization
       const voltageRatio = Math.max(0, Math.min(1, (neuron.V + 80) / 20));
-      const innerRadius = 20 * voltageRatio;
+      const innerRadius = 25 * voltageRatio;
       
       if (innerRadius > 0) {
         ctx.fillStyle = isSpiking ? '#ff6b6b' : '#4ade80';
@@ -439,16 +449,16 @@ function NetworkGraph({ network, spikes, className = '' }) {
         ctx.fill();
       }
 
-      // Spike animation
+      // Spike animation (larger and more visible)
       if (isSpiking) {
         ctx.strokeStyle = '#ff6b6b';
-        ctx.lineWidth = 3;
-        for (let i = 0; i < 8; i++) {
-          const angle = (i * Math.PI) / 4;
-          const x1 = pos.x + Math.cos(angle) * 30;
-          const y1 = pos.y + Math.sin(angle) * 30;
-          const x2 = pos.x + Math.cos(angle) * 45;
-          const y2 = pos.y + Math.sin(angle) * 45;
+        ctx.lineWidth = 4;
+        for (let i = 0; i < 12; i++) {
+          const angle = (i * Math.PI) / 6;
+          const x1 = pos.x + Math.cos(angle) * 40;
+          const y1 = pos.y + Math.sin(angle) * 40;
+          const x2 = pos.x + Math.cos(angle) * 60;
+          const y2 = pos.y + Math.sin(angle) * 60;
           
           ctx.beginPath();
           ctx.moveTo(x1, y1);
@@ -457,19 +467,19 @@ function NetworkGraph({ network, spikes, className = '' }) {
         }
       }
 
-      // Neuron label
+      // Neuron label (larger and more visible)
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 12px Georgia, serif';
+      ctx.font = 'bold 16px Georgia, serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       const label = index === 0 ? 'x1' : index === 1 ? 'x2' : 
                    index === 2 ? 'H_OR' : index === 3 ? 'H_AND' : 'O';
       ctx.fillText(label, pos.x, pos.y);
 
-      // Voltage display
+      // Voltage display (larger and positioned better)
       ctx.fillStyle = '#b0a99f';
-      ctx.font = '10px sans-serif';
-      ctx.fillText(`${neuron.V.toFixed(1)}mV`, pos.x, pos.y + 40);
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillText(`${neuron.V.toFixed(1)}mV`, pos.x, pos.y + 55);
     });
 
   }, [network, spikes, signalParticles, dimensions]);
@@ -1159,7 +1169,7 @@ export default function NeuronSimPage() {
           <h2 style={{fontSize: '1.5rem', color: '#ffffff', marginBottom: '1.5rem', fontWeight: '600', fontFamily: 'Georgia, serif', textAlign: 'center'}}>
             Neural Network with Live Signal Propagation
           </h2>
-          <div style={{height: '400px', background: '#1a1816', borderRadius: '8px', border: '1px solid #3d3a37', marginBottom: '1rem'}}>
+          <div style={{height: '600px', width: '100%', background: '#1a1816', borderRadius: '8px', border: '1px solid #3d3a37', marginBottom: '1rem', overflow: 'hidden'}}>
             <NetworkGraph
               network={network}
               spikes={spikesWindow}
