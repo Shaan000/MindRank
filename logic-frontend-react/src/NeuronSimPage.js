@@ -536,10 +536,12 @@ function NeuronDisplay({ neuronId, neuron, params, spikes, isSpiking, className 
       ctx.fill();
     }
 
-    // Draw spike animation
+    // Draw spike animation with spark effect
     if (isSpiking) {
       ctx.strokeStyle = '#ff6b6b';
       ctx.lineWidth = 3;
+      
+      // Main spike rays
       for (let i = 0; i < 8; i++) {
         const angle = (i * Math.PI) / 4;
         const x1 = centerX + Math.cos(angle) * radius;
@@ -552,6 +554,27 @@ function NeuronDisplay({ neuronId, neuron, params, spikes, isSpiking, className 
         ctx.lineTo(x2, y2);
         ctx.stroke();
       }
+      
+      // Add spark effect with glow
+      ctx.shadowColor = '#ff6b6b';
+      ctx.shadowBlur = 15;
+      ctx.strokeStyle = '#ff6b6b';
+      ctx.lineWidth = 2;
+      
+      for (let i = 0; i < 12; i++) {
+        const angle = (i * Math.PI) / 6;
+        const x1 = centerX + Math.cos(angle) * (radius - 5);
+        const y1 = centerY + Math.sin(angle) * (radius - 5);
+        const x2 = centerX + Math.cos(angle) * (radius + 25);
+        const y2 = centerY + Math.sin(angle) * (radius + 25);
+        
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+      
+      ctx.shadowBlur = 0;
     }
 
     // Draw neuron label
@@ -621,7 +644,8 @@ function NetworkGraph({ network, spikes, className = '' }) {
           startTime: time,
           delay: delay,
           progress: 0,
-          color: synParams.inhibitory ? '#ff6b6b' : '#4ade80'
+          color: synParams.inhibitory ? '#ff6b6b' : '#4ade80',
+          strength: Math.abs(synParams.w) // Signal strength based on weight
         }]);
       });
     });
@@ -740,39 +764,70 @@ function NetworkGraph({ network, spikes, className = '' }) {
       ctx.stroke();
     });
 
-    // Draw signal particles
-    signalParticles.forEach(particle => {
-      const fromPos = neuronPositions[particle.from];
-      const toPos = neuronPositions[particle.to];
-      
-      if (!fromPos || !toPos) return;
+      // Draw signal particles with enhanced visualization
+      signalParticles.forEach(particle => {
+        const fromPos = neuronPositions[particle.from];
+        const toPos = neuronPositions[particle.to];
+        
+        if (!fromPos || !toPos) return;
 
-      const x = fromPos.x + (toPos.x - fromPos.x) * particle.progress;
-      const y = fromPos.y + (toPos.y - fromPos.y) * particle.progress;
+        const x = fromPos.x + (toPos.x - fromPos.x) * particle.progress;
+        const y = fromPos.y + (toPos.y - fromPos.y) * particle.progress;
 
-      // Draw larger, more visible signal particles
-      ctx.fillStyle = particle.color;
-      ctx.beginPath();
-      ctx.arc(x, y, 8, 0, 2 * Math.PI);
-      ctx.fill();
+        // Signal strength affects particle size
+        const baseSize = 6;
+        const strengthSize = (particle.strength || 0.1) * 20;
+        const particleSize = baseSize + strengthSize;
 
-      // Add stronger glow effect for better visibility
-      ctx.shadowColor = particle.color;
-      ctx.shadowBlur = 15;
-      ctx.beginPath();
-      ctx.arc(x, y, 4, 0, 2 * Math.PI);
-      ctx.fill();
-      ctx.shadowBlur = 0;
+        // Draw signal particle with strength-based size
+        ctx.fillStyle = particle.color;
+        ctx.beginPath();
+        ctx.arc(x, y, particleSize, 0, 2 * Math.PI);
+        ctx.fill();
 
-      // Add pulsing effect
-      const pulseSize = 6 + 2 * Math.sin(Date.now() * 0.01);
-      ctx.fillStyle = particle.color;
-      ctx.globalAlpha = 0.6;
-      ctx.beginPath();
-      ctx.arc(x, y, pulseSize, 0, 2 * Math.PI);
-      ctx.fill();
-      ctx.globalAlpha = 1.0;
-    });
+        // Add glow effect based on signal strength
+        ctx.shadowColor = particle.color;
+        ctx.shadowBlur = 10 + strengthSize * 2;
+        ctx.beginPath();
+        ctx.arc(x, y, particleSize * 0.6, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // Add pulsing effect
+        const pulseSize = particleSize + 3 * Math.sin(Date.now() * 0.01);
+        ctx.fillStyle = particle.color;
+        ctx.globalAlpha = 0.4;
+        ctx.beginPath();
+        ctx.arc(x, y, pulseSize, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+
+        // Add spark effect when signal arrives at target neuron
+        if (particle.progress > 0.9) {
+          const sparkSize = 15 + strengthSize * 10;
+          const sparkAlpha = (1 - particle.progress) * 2; // Fade out as it arrives
+          
+          ctx.strokeStyle = particle.color;
+          ctx.lineWidth = 3;
+          ctx.globalAlpha = sparkAlpha;
+          
+          // Draw spark rays
+          for (let i = 0; i < 8; i++) {
+            const angle = (i * Math.PI) / 4;
+            const x1 = toPos.x + Math.cos(angle) * 20;
+            const y1 = toPos.y + Math.sin(angle) * 20;
+            const x2 = toPos.x + Math.cos(angle) * sparkSize;
+            const y2 = toPos.y + Math.sin(angle) * sparkSize;
+            
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+          }
+          
+          ctx.globalAlpha = 1.0;
+        }
+      });
 
     // Draw neurons
     network.neurons.forEach((neuron, index) => {
@@ -801,10 +856,12 @@ function NetworkGraph({ network, spikes, className = '' }) {
         ctx.fill();
       }
 
-      // Spike animation (larger and more visible)
+      // Spike animation with enhanced spark effect
       if (isSpiking) {
         ctx.strokeStyle = '#ff6b6b';
         ctx.lineWidth = 4;
+        
+        // Main spike rays
         for (let i = 0; i < 12; i++) {
           const angle = (i * Math.PI) / 6;
           const x1 = pos.x + Math.cos(angle) * 40;
@@ -817,6 +874,27 @@ function NetworkGraph({ network, spikes, className = '' }) {
           ctx.lineTo(x2, y2);
           ctx.stroke();
         }
+        
+        // Add spark effect with glow
+        ctx.shadowColor = '#ff6b6b';
+        ctx.shadowBlur = 20;
+        ctx.strokeStyle = '#ff6b6b';
+        ctx.lineWidth = 2;
+        
+        for (let i = 0; i < 16; i++) {
+          const angle = (i * Math.PI) / 8;
+          const x1 = pos.x + Math.cos(angle) * 30;
+          const y1 = pos.y + Math.sin(angle) * 30;
+          const x2 = pos.x + Math.cos(angle) * 70;
+          const y2 = pos.y + Math.sin(angle) * 70;
+          
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.stroke();
+        }
+        
+        ctx.shadowBlur = 0;
       }
 
       // Neuron label (larger and more visible)
