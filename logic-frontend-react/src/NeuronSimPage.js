@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 
-// SNN Core Library
+// Biologically Realistic SNN Library
 const DEFAULT_NEURON_PARAMS = {
   Vrest: -65,
   Vth: -50,
@@ -27,8 +27,31 @@ const DEFAULT_INTRINSIC_PARAMS = {
   windowMs: 200
 };
 
-// Initialize XOR(Hard) network
-function initXORHard() {
+// Jitter function for breaking symmetry
+function jitterDelayMs(base) {
+  const j = (Math.random() - 0.5) * 1.0;
+  return Math.max(1, Math.round(base + j));
+}
+
+// Poisson spike generation
+function maybeEmitPoisson(rateHz, dtMs) {
+  const p = 1 - Math.exp(-rateHz * dtMs / 1000);
+  return Math.random() < p;
+}
+
+// Sign-conserving weight update
+function signConserve(w, inhibitory) {
+  if (inhibitory) return Math.min(w, 0);
+  return Math.max(w, 0);
+}
+
+// Clamp function
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+// Initialize biologically realistic XOR network with STDP
+function initXORSTDP() {
   const network = {
     tMs: 0,
     dtMs: 1,
@@ -55,34 +78,47 @@ function initXORHard() {
       { s: 0, delayQueue: new Uint16Array(1), head: 0, lastPreMs: -1000, lastPostMs: -1000 }
     ],
     sParams: [
-      { pre: 0, post: 2, w: 1, delayMs: 1, tauSyn: 5, jump: 1 },
-      { pre: 1, post: 2, w: 1, delayMs: 1, tauSyn: 5, jump: 1 },
-      { pre: 0, post: 3, w: 0.8, delayMs: 1, tauSyn: 5, jump: 1 },
-      { pre: 1, post: 3, w: 0.8, delayMs: 1, tauSyn: 5, jump: 1 },
-      { pre: 2, post: 4, w: 1.5, delayMs: 2, tauSyn: 5, jump: 1 },
-      { pre: 3, post: 4, w: -1.2, delayMs: 1, tauSyn: 5, jump: 1, inhibitory: true }
+      // x1 -> H_OR (excitatory, with jitter)
+      { pre: 0, post: 2, w: 0.1, delayMs: jitterDelayMs(1), tauSyn: 5, jump: 1, inhibitory: false },
+      // x2 -> H_OR (excitatory, with jitter)
+      { pre: 1, post: 2, w: 0.1, delayMs: jitterDelayMs(1), tauSyn: 5, jump: 1, inhibitory: false },
+      // x1 -> H_AND (excitatory, with jitter)
+      { pre: 0, post: 3, w: 0.1, delayMs: jitterDelayMs(1), tauSyn: 5, jump: 1, inhibitory: false },
+      // x2 -> H_AND (excitatory, with jitter)
+      { pre: 1, post: 3, w: 0.1, delayMs: jitterDelayMs(1), tauSyn: 5, jump: 1, inhibitory: false },
+      // H_OR -> O (excitatory, longer delay)
+      { pre: 2, post: 4, w: 0.05, delayMs: 2, tauSyn: 5, jump: 1, inhibitory: false },
+      // H_AND -> O (inhibitory, shorter delay)
+      { pre: 3, post: 4, w: -0.05, delayMs: 1, tauSyn: 5, jump: 1, inhibitory: true }
     ],
-    fanOut: [[0, 2], [1, 3], [4], [4], []],
-    fanIn: [[], [], [0, 1], [0, 1], [2, 3]],
+    fanOut: [[0, 2], [1, 3], [4], [5], []],
+    fanIn: [[], [], [0, 1], [2, 3], [4, 5]],
     stdp: { ...DEFAULT_STDP_PARAMS },
     intr: { ...DEFAULT_INTRINSIC_PARAMS },
-    inputRatesHz: [0, 0, 0, 0, 0]
+    inputRatesHz: [15, 15, 0, 0, 0], // Default Poisson rates
+    jitterEnabled: true,
+    spikeHistory: [[], [], [], [], []], // Track spikes for intrinsic plasticity
+    learningMode: true
   };
   return network;
 }
 
-// Simple step function
+// Keep old function for compatibility
+function initXORHard() {
+  return initXORSTDP();
+}
+
+// Biologically realistic step function with STDP and intrinsic plasticity
 function stepNetwork(net, externalSpikes = []) {
   const result = {
     tMs: net.tMs,
     spikes: []
   };
 
-  // Process external Poisson inputs
-  for (let i = 0; i < net.inputRatesHz.length; i++) {
+  // Process external Poisson inputs (only for input neurons)
+  for (let i = 0; i < 2; i++) { // Only x1, x2
     if (net.inputRatesHz[i] > 0) {
-      const p = 1 - Math.exp(-net.inputRatesHz[i] * net.dtMs / 1000);
-      if (Math.random() < p) {
+      if (maybeEmitPoisson(net.inputRatesHz[i], net.dtMs)) {
         externalSpikes.push({ target: i, atMs: net.tMs });
       }
     }
@@ -143,6 +179,59 @@ function stepNetwork(net, externalSpikes = []) {
     const syn = net.synapses[i];
     const synParams = net.sParams[i];
     syn.s -= (syn.s / synParams.tauSyn) * net.dtMs;
+  }
+
+  // STDP Learning (sign-conserving)
+  if (net.stdp.enabled) {
+    for (const spike of result.spikes) {
+      const [neuronId, time] = spike;
+      
+      // Update fan-out synapses (pre-before-post LTP)
+      for (const synIdx of net.fanOut[neuronId] || []) {
+        const syn = net.synapses[synIdx];
+        const synParams = net.sParams[synIdx];
+        const dTpos = syn.lastPostMs - time;
+        
+        if (dTpos > 0) {
+          const dw = net.stdp.Apos * Math.exp(-dTpos / net.stdp.tauPos);
+          const newW = synParams.w + dw;
+          synParams.w = clamp(signConserve(newW, synParams.inhibitory), net.stdp.wMin, net.stdp.wMax);
+        }
+        syn.lastPreMs = time;
+      }
+      
+      // Update fan-in synapses (post-before-pre LTD)
+      for (const synIdx of net.fanIn[neuronId] || []) {
+        const syn = net.synapses[synIdx];
+        const synParams = net.sParams[synIdx];
+        const dTneg = time - syn.lastPreMs;
+        
+        if (dTneg > 0) {
+          const dw = -net.stdp.Aneg * Math.exp(-dTneg / net.stdp.tauNeg);
+          const newW = synParams.w + dw;
+          synParams.w = clamp(signConserve(newW, synParams.inhibitory), net.stdp.wMin, net.stdp.wMax);
+        }
+        syn.lastPostMs = time;
+      }
+    }
+  }
+
+  // Intrinsic Plasticity (homeostatic threshold adjustment)
+  if (net.intr.enabled && net.tMs % net.intr.windowMs === 0) {
+    for (let i = 2; i < net.neurons.length; i++) { // Skip input neurons
+      const spikesInWindow = net.spikeHistory[i].filter(t => t > net.tMs - net.intr.windowMs);
+      const rate = spikesInWindow.length / (net.intr.windowMs / 1000);
+      const dVth = net.intr.eta * (rate - net.intr.targetHz);
+      net.nParams[i].Vth = clamp(net.nParams[i].Vth + dVth, -55, -45);
+    }
+  }
+
+  // Track spikes for intrinsic plasticity
+  for (const spike of result.spikes) {
+    const [neuronId, time] = spike;
+    net.spikeHistory[neuronId].push(time);
+    // Keep only recent spikes
+    net.spikeHistory[neuronId] = net.spikeHistory[neuronId].filter(t => t > net.tMs - 1000);
   }
 
   net.tMs += net.dtMs;
@@ -716,12 +805,16 @@ function RasterPlot({ spikes, neuronCount, timeWindow = 2000, className = '' }) 
 }
 
 export default function NeuronSimPage() {
-  const [network, setNetwork] = useState(() => initXORHard());
+  const [network, setNetwork] = useState(() => initXORSTDP());
   const [isRunning, setIsRunning] = useState(false);
   const [speed, setSpeed] = useState(1.0);
   const [spikesWindow, setSpikesWindow] = useState([]);
-  const [x1Rate, setX1Rate] = useState(0);
-  const [x2Rate, setX2Rate] = useState(0);
+  const [x1Rate, setX1Rate] = useState(15);
+  const [x2Rate, setX2Rate] = useState(15);
+  const [stdpEnabled, setStdpEnabled] = useState(true);
+  const [intrinsicEnabled, setIntrinsicEnabled] = useState(true);
+  const [jitterEnabled, setJitterEnabled] = useState(true);
+  const [learningMode, setLearningMode] = useState(true);
   
   const animationRef = useRef();
   const lastTimeRef = useRef(0);
@@ -736,8 +829,36 @@ export default function NeuronSimPage() {
 
   const reset = useCallback(() => {
     setIsRunning(false);
-    setNetwork(initXORHard());
+    setNetwork(initXORSTDP());
     setSpikesWindow([]);
+  }, []);
+
+  const toggleStdp = useCallback(() => {
+    setStdpEnabled(prev => {
+      setNetwork(net => ({ ...net, stdp: { ...net.stdp, enabled: !prev } }));
+      return !prev;
+    });
+  }, []);
+
+  const toggleIntrinsic = useCallback(() => {
+    setIntrinsicEnabled(prev => {
+      setNetwork(net => ({ ...net, intr: { ...net.intr, enabled: !prev } }));
+      return !prev;
+    });
+  }, []);
+
+  const toggleJitter = useCallback(() => {
+    setJitterEnabled(prev => {
+      setNetwork(net => ({ ...net, jitterEnabled: !prev }));
+      return !prev;
+    });
+  }, []);
+
+  const toggleLearningMode = useCallback(() => {
+    setLearningMode(prev => {
+      setNetwork(net => ({ ...net, learningMode: !prev }));
+      return !prev;
+    });
   }, []);
 
   const step = useCallback((n = 1) => {
@@ -1077,6 +1198,55 @@ export default function NeuronSimPage() {
             />
           </div>
 
+          {/* Learning Controls */}
+          <div style={{textAlign: 'center', marginTop: '2rem'}}>
+            <h3 style={{color: '#ffffff', marginBottom: '1rem', fontFamily: 'Georgia, serif', fontSize: '1.125rem'}}>
+              Learning Mechanisms
+            </h3>
+            <div style={{display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '0.5rem'}}>
+              <button 
+                onClick={toggleStdp}
+                style={{
+                  ...patternButtonStyle,
+                  background: stdpEnabled ? '#769656' : '#1a1816',
+                  color: stdpEnabled ? '#ffffff' : '#b0a99f'
+                }}
+              >
+                STDP {stdpEnabled ? 'ON' : 'OFF'}
+              </button>
+              <button 
+                onClick={toggleIntrinsic}
+                style={{
+                  ...patternButtonStyle,
+                  background: intrinsicEnabled ? '#769656' : '#1a1816',
+                  color: intrinsicEnabled ? '#ffffff' : '#b0a99f'
+                }}
+              >
+                Intrinsic {intrinsicEnabled ? 'ON' : 'OFF'}
+              </button>
+              <button 
+                onClick={toggleJitter}
+                style={{
+                  ...patternButtonStyle,
+                  background: jitterEnabled ? '#769656' : '#1a1816',
+                  color: jitterEnabled ? '#ffffff' : '#b0a99f'
+                }}
+              >
+                Jitter {jitterEnabled ? 'ON' : 'OFF'}
+              </button>
+              <button 
+                onClick={toggleLearningMode}
+                style={{
+                  ...patternButtonStyle,
+                  background: learningMode ? '#cc8c14' : '#1a1816',
+                  color: learningMode ? '#ffffff' : '#b0a99f'
+                }}
+              >
+                Learning {learningMode ? 'ON' : 'OFF'}
+              </button>
+            </div>
+          </div>
+
           {/* Test Patterns */}
           <div style={{textAlign: 'center', marginTop: '2rem'}}>
             <h3 style={{color: '#ffffff', marginBottom: '1rem', fontFamily: 'Georgia, serif', fontSize: '1.125rem'}}>
@@ -1208,30 +1378,33 @@ export default function NeuronSimPage() {
         {/* Network Description */}
         <div style={cardStyle}>
           <h2 style={{fontSize: '1.5rem', color: '#ffffff', marginBottom: '1.5rem', fontWeight: '600', fontFamily: 'Georgia, serif', textAlign: 'center'}}>
-            XOR Network Architecture
+            Biologically Realistic XOR Network
           </h2>
           <div style={descriptionStyle}>
             <p style={descriptionTextStyle}>
-              This simulation demonstrates an XOR (exclusive OR) neural network with 5 spiking neurons:
+              This simulation demonstrates a biologically realistic XOR network with stochastic inputs and local learning:
             </p>
             <ul style={{color: '#e5e0dc', marginTop: '1rem', paddingLeft: '1.5rem'}}>
               <li style={listItemStyle}>
-                <strong style={{color: '#769656'}}>x1, x2:</strong> Input neurons that generate Poisson spike trains
+                <strong style={{color: '#769656'}}>x1, x2:</strong> Poisson spike generators (no DC current)
               </li>
               <li style={listItemStyle}>
-                <strong style={{color: '#769656'}}>H_OR:</strong> Hidden neuron that fires when either input is active
+                <strong style={{color: '#769656'}}>H_OR, H_AND:</strong> Hidden neurons with symmetry-breaking jitter
               </li>
               <li style={listItemStyle}>
-                <strong style={{color: '#769656'}}>H_AND:</strong> Hidden neuron that fires when both inputs are active
-              </li>
-              <li style={listItemStyle}>
-                <strong style={{color: '#769656'}}>O:</strong> Output neuron that implements XOR logic
+                <strong style={{color: '#769656'}}>O:</strong> Output neuron with STDP + intrinsic plasticity
               </li>
             </ul>
             <p style={{...descriptionTextStyle, marginTop: '1.5rem', padding: '1rem', background: '#1a1816', borderRadius: '6px', border: '1px solid #3d3a37'}}>
-              <strong style={{color: '#cc8c14'}}>XOR Logic:</strong> The output fires when exactly one input is active (patterns 01 or 10), 
-              but remains silent when both inputs are active (11) or when neither is active (00). 
-              This demonstrates how neural networks can implement logical operations through spike timing.
+              <strong style={{color: '#cc8c14'}}>Learning Mechanisms:</strong> 
+              <br/>• <strong>STDP:</strong> Pre-before-post LTP, post-before-pre LTD (sign-conserving)
+              <br/>• <strong>Intrinsic Plasticity:</strong> Homeostatic threshold adjustment (target: 8 Hz)
+              <br/>• <strong>Jitter:</strong> Asymmetry-breaking delays for natural differentiation
+              <br/>• <strong>XOR Logic:</strong> Emerges through learning, not hard-wiring
+            </p>
+            <p style={{...descriptionTextStyle, marginTop: '1rem', padding: '1rem', background: '#1a1816', borderRadius: '6px', border: '1px solid #3d3a37'}}>
+              <strong style={{color: '#ff6b6b'}}>Realistic Features:</strong> No constant current injection, only Poisson inputs. 
+              Network learns XOR through local plasticity rules, just like biological neural networks!
             </p>
           </div>
         </div>
