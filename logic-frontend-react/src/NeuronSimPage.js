@@ -657,17 +657,48 @@ function NetworkGraph({ network, spikes, className = '' }) {
     ctx.fillStyle = '#1a1816';
     ctx.fillRect(0, 0, dimensions.width, dimensions.height);
 
-    // Define neuron positions optimized for the larger container
+    // Define neuron positions dynamically based on network size
     const centerX = dimensions.width / 2;
     const centerY = dimensions.height / 2;
     
-    const neuronPositions = [
-      { x: centerX - 200, y: centerY - 100 },   // x1
-      { x: centerX - 200, y: centerY + 100 },   // x2
-      { x: centerX, y: centerY - 50 },          // H_OR
-      { x: centerX, y: centerY + 50 },          // H_AND
-      { x: centerX + 200, y: centerY }          // O
-    ];
+    // Auto-layout neurons by type
+    const neuronPositions = [];
+    const inputs = [];
+    const hidden = [];
+    const outputs = [];
+    
+    // Categorize neurons by type
+    network.meta.forEach((neuron, index) => {
+      if (neuron.type === NeuronType.INPUT) {
+        inputs.push(index);
+      } else if (neuron.type === NeuronType.OUTPUT) {
+        outputs.push(index);
+      } else {
+        hidden.push(index);
+      }
+    });
+    
+    // Position inputs (left side)
+    inputs.forEach((neuronId, i) => {
+      const y = centerY - 100 + (i * 200);
+      neuronPositions[neuronId] = { x: centerX - 300, y: y };
+    });
+    
+    // Position hidden neurons (middle, stacked)
+    hidden.forEach((neuronId, i) => {
+      const cols = Math.ceil(Math.sqrt(hidden.length));
+      const row = Math.floor(i / cols);
+      const col = i % cols;
+      const x = centerX - 100 + (col * 100);
+      const y = centerY - 100 + (row * 100);
+      neuronPositions[neuronId] = { x, y };
+    });
+    
+    // Position outputs (right side)
+    outputs.forEach((neuronId, i) => {
+      const y = centerY;
+      neuronPositions[neuronId] = { x: centerX + 300, y: y };
+    });
 
     // Draw connections first (behind neurons)
     network.sParams.forEach((synParams, index) => {
@@ -793,8 +824,7 @@ function NetworkGraph({ network, spikes, className = '' }) {
       ctx.font = 'bold 16px Georgia, serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      const label = index === 0 ? 'x1' : index === 1 ? 'x2' : 
-                   index === 2 ? 'H_OR' : index === 3 ? 'H_AND' : 'O';
+      const label = network.meta[index]?.name || `N${index}`;
       ctx.fillText(label, pos.x, pos.y);
 
       // Voltage display (larger and positioned better)
@@ -803,7 +833,7 @@ function NetworkGraph({ network, spikes, className = '' }) {
       ctx.fillText(`${neuron.V.toFixed(1)}mV`, pos.x, pos.y + 55);
     });
 
-  }, [network, spikes, signalParticles, dimensions]);
+  }, [network, spikes, signalParticles, dimensions, network.meta.length]);
 
   return (
     <div className={`relative ${className}`} style={{ width: '100%', height: '100%' }}>
@@ -1711,8 +1741,10 @@ export default function NeuronSimPage() {
                     />
                   </div>
                   <div style={{color: '#b0a99f', fontSize: '0.9rem', fontFamily: 'Georgia, serif'}}>
-                    {index === 0 ? 'x1' : index === 1 ? 'x2' : 
-                     index === 2 ? 'H_OR' : index === 3 ? 'H_AND' : 'O'}
+                    {network.meta[index]?.name || `N${index}`}
+                  </div>
+                  <div style={{color: '#4ade80', fontSize: '0.8rem'}}>
+                    {network.meta[index]?.type || 'Unknown'}
                   </div>
                   <div style={{color: '#769656', fontSize: '0.8rem'}}>
                     {neuron.V.toFixed(1)}mV
