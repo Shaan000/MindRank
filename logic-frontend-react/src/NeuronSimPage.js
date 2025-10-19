@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 
-// Biologically Realistic SNN Library with Competition Mechanisms
+// Biologically Realistic SNN Library with Network Builder
 const DEFAULT_NEURON_PARAMS = {
   Vrest: -65,
   Vth: -50,
@@ -8,6 +8,21 @@ const DEFAULT_NEURON_PARAMS = {
   tauM: 20,
   tauRef: 3,
   Rm: 1
+};
+
+// Neuron types (no logic labels!)
+const NeuronType = {
+  EXCITATORY: 'E',
+  INHIBITORY: 'I', 
+  INPUT: 'Input',
+  OUTPUT: 'Output'
+};
+
+// Role presets (biophysical biases only)
+const RolePreset = {
+  OR_BIASED: 'OR_BIASED',    // Lower Vth, longer tauM
+  AND_BIASED: 'AND_BIASED',  // Higher Vth, shorter tauM  
+  NEUTRAL: 'NEUTRAL'         // Defaults
 };
 
 const DEFAULT_STDP_PARAMS = {
@@ -78,6 +93,151 @@ function preEnqueueWithRelease(net, synIdx) {
   return false; // Release failed
 }
 
+// Network Builder Functions
+function getPresetParams(preset, neuronType) {
+  const base = { ...DEFAULT_NEURON_PARAMS };
+  
+  if (neuronType === NeuronType.INHIBITORY) {
+    return base; // Inhibitory neurons always neutral
+  }
+  
+  switch (preset) {
+    case RolePreset.OR_BIASED:
+      return { ...base, Vth: -51, tauM: 25, tauSyn: 6 };
+    case RolePreset.AND_BIASED:
+      return { ...base, Vth: -49, tauM: 15, tauSyn: 4 };
+    case RolePreset.NEUTRAL:
+    default:
+      return base;
+  }
+}
+
+function addNeuron(net, opts) {
+  const { type, name, preset = RolePreset.NEUTRAL, connectFromInputs = true, connectToOutput = true } = opts;
+  const neuronId = net.neurons.length;
+  
+  // Add neuron state and parameters
+  net.neurons.push({ V: -65, refUntilMs: 0, lastSpikeMs: -1000 });
+  net.nParams.push(getPresetParams(preset, type));
+  net.meta.push({ id: neuronId, name: name || `${type}${neuronId}`, type, preset });
+  
+  // Initialize fan connections
+  net.fanOut.push([]);
+  net.fanIn.push([]);
+  
+  // Connect from inputs if requested
+  if (connectFromInputs && neuronId > 1) { // Skip if this is x1 or x2
+    const inputWeight = type === NeuronType.INHIBITORY ? -0.02 : 0.02;
+    
+    // x1 -> new neuron
+    addSynapse(net, {
+      pre: 0, post: neuronId,
+      w: inputWeight, delayMs: jitterDelayMs(1), tauSyn: 5, jump: 1,
+      U: 0.2, tauRec: 600
+    });
+    
+    // x2 -> new neuron  
+    addSynapse(net, {
+      pre: 1, post: neuronId,
+      w: inputWeight, delayMs: jitterDelayMs(1), tauSyn: 5, jump: 1,
+      U: 0.2, tauRec: 600
+    });
+  }
+  
+  // Connect to output if requested
+  if (connectToOutput && neuronId > 1) {
+    const outputWeight = type === NeuronType.INHIBITORY ? -0.05 : 0.03;
+    const delay = type === NeuronType.INHIBITORY ? 1 : 2; // I arrives first
+    
+    addSynapse(net, {
+      pre: neuronId, post: 4, // Output is always neuron 4
+      w: outputWeight, delayMs: delay, tauSyn: 5, jump: 1,
+      U: 0.2, tauRec: 600
+    });
+  }
+  
+  return neuronId;
+}
+
+function addSynapse(net, opts) {
+  const { pre, post, w = 0.1, delayMs = 1, tauSyn = 5, jump = 1, U = 0.2, tauRec = 600 } = opts;
+  
+  // Determine sign from pre-neuron type
+  const preType = net.meta[pre]?.type;
+  const finalWeight = preType === NeuronType.INHIBITORY ? -Math.abs(w) : Math.abs(w);
+  
+  // Add synapse state
+  const synIdx = net.synapses.length;
+  net.synapses.push({
+    s: 0, delayQueue: new Uint16Array(Math.max(1, Math.round(delayMs / net.dtMs))),
+    head: 0, lastPreMs: -1000, lastPostMs: -1000, R: 1, lastUpdateMs: 0
+  });
+  
+  // Add synapse parameters
+  net.sParams.push({
+    pre, post, w: finalWeight, delayMs, tauSyn, jump,
+    inhibitory: preType === NeuronType.INHIBITORY,
+    U, tauRec
+  });
+  
+  // Update fan connections
+  net.fanOut[pre].push(synIdx);
+  net.fanIn[post].push(synIdx);
+  
+  return synIdx;
+}
+
+function removeNeuron(net, neuronId) {
+  if (neuronId < 2 || neuronId >= net.neurons.length) return; // Can't remove inputs/output
+  
+  // Remove all synapses connected to this neuron
+  const synapsesToRemove = [];
+  for (let i = 0; i < net.synapses.length; i++) {
+    const syn = net.sParams[i];
+    if (syn.pre === neuronId || syn.post === neuronId) {
+      synapsesToRemove.push(i);
+    }
+  }
+  
+  // Remove synapses in reverse order
+  synapsesToRemove.reverse().forEach(idx => removeSynapse(net, idx));
+  
+  // Remove neuron
+  net.neurons.splice(neuronId, 1);
+  net.nParams.splice(neuronId, 1);
+  net.meta.splice(neuronId, 1);
+  net.fanOut.splice(neuronId, 1);
+  net.fanIn.splice(neuronId, 1);
+  
+  // Update synapse indices
+  for (let i = 0; i < net.sParams.length; i++) {
+    if (net.sParams[i].pre > neuronId) net.sParams[i].pre--;
+    if (net.sParams[i].post > neuronId) net.sParams[i].post--;
+  }
+}
+
+function removeSynapse(net, synIdx) {
+  if (synIdx < 0 || synIdx >= net.synapses.length) return;
+  
+  const syn = net.sParams[synIdx];
+  const pre = syn.pre;
+  const post = syn.post;
+  
+  // Remove from fan connections
+  net.fanOut[pre] = net.fanOut[pre].filter(idx => idx !== synIdx);
+  net.fanIn[post] = net.fanIn[post].filter(idx => idx !== synIdx);
+  
+  // Remove synapse
+  net.synapses.splice(synIdx, 1);
+  net.sParams.splice(synIdx, 1);
+  
+  // Update fan connection indices
+  for (let i = 0; i < net.neurons.length; i++) {
+    net.fanOut[i] = net.fanOut[i].map(idx => idx > synIdx ? idx - 1 : idx);
+    net.fanIn[i] = net.fanIn[i].map(idx => idx > synIdx ? idx - 1 : idx);
+  }
+}
+
 // Initialize biologically realistic XOR network with STDP
 function initXORSTDP() {
   const network = {
@@ -96,6 +256,13 @@ function initXORSTDP() {
       { ...DEFAULT_NEURON_PARAMS },
       { ...DEFAULT_NEURON_PARAMS },
       { ...DEFAULT_NEURON_PARAMS }
+    ],
+    meta: [
+      { id: 0, name: 'x1', type: NeuronType.INPUT },
+      { id: 1, name: 'x2', type: NeuronType.INPUT },
+      { id: 2, name: 'E1', type: NeuronType.EXCITATORY, preset: RolePreset.OR_BIASED },
+      { id: 3, name: 'E2', type: NeuronType.EXCITATORY, preset: RolePreset.AND_BIASED },
+      { id: 4, name: 'O', type: NeuronType.OUTPUT }
     ],
     synapses: [
       { s: 0, delayQueue: new Uint16Array(1), head: 0, lastPreMs: -1000, lastPostMs: -1000, R: 1, lastUpdateMs: 0 },
@@ -863,6 +1030,10 @@ export default function NeuronSimPage() {
   const [stdEnabled, setStdEnabled] = useState(true);
   const [releaseEnabled, setReleaseEnabled] = useState(true);
   const [lateralEnabled, setLateralEnabled] = useState(true);
+  const [showNetworkBuilder, setShowNetworkBuilder] = useState(false);
+  const [newNeuronType, setNewNeuronType] = useState(NeuronType.EXCITATORY);
+  const [newNeuronPreset, setNewNeuronPreset] = useState(RolePreset.NEUTRAL);
+  const [newNeuronName, setNewNeuronName] = useState('');
   
   const animationRef = useRef();
   const lastTimeRef = useRef(0);
@@ -919,6 +1090,29 @@ export default function NeuronSimPage() {
 
   const toggleLateral = useCallback(() => {
     setLateralEnabled(prev => !prev);
+  }, []);
+
+  const addNeuronToNetwork = useCallback(() => {
+    setNetwork(net => {
+      const newNet = { ...net };
+      addNeuron(newNet, {
+        type: newNeuronType,
+        name: newNeuronName || undefined,
+        preset: newNeuronPreset,
+        connectFromInputs: true,
+        connectToOutput: true
+      });
+      return newNet;
+    });
+    setNewNeuronName('');
+  }, [newNeuronType, newNeuronPreset, newNeuronName]);
+
+  const removeNeuronFromNetwork = useCallback((neuronId) => {
+    setNetwork(net => {
+      const newNet = { ...net };
+      removeNeuron(newNet, neuronId);
+      return newNet;
+    });
   }, []);
 
   const step = useCallback((n = 1) => {
@@ -1346,6 +1540,103 @@ export default function NeuronSimPage() {
             </div>
           </div>
 
+          {/* Network Builder */}
+          <div style={{textAlign: 'center', marginTop: '2rem'}}>
+            <button 
+              onClick={() => setShowNetworkBuilder(!showNetworkBuilder)}
+              style={{
+                ...controlButtonStyle,
+                background: showNetworkBuilder ? '#cc8c14' : '#769656',
+                marginBottom: '1rem'
+              }}
+            >
+              {showNetworkBuilder ? '▼' : '▶'} Network Builder
+            </button>
+            
+            {showNetworkBuilder && (
+              <div style={{background: '#1a1816', padding: '1.5rem', borderRadius: '8px', border: '1px solid #3d3a37', textAlign: 'left'}}>
+                <h4 style={{color: '#ffffff', marginBottom: '1rem', fontFamily: 'Georgia, serif'}}>
+                  Add Neuron
+                </h4>
+                
+                <div style={{marginBottom: '1rem'}}>
+                  <label style={{color: '#b0a99f', display: 'block', marginBottom: '0.5rem'}}>Type:</label>
+                  <select 
+                    value={newNeuronType}
+                    onChange={(e) => setNewNeuronType(e.target.value)}
+                    style={{background: '#262421', color: '#ffffff', border: '1px solid #3d3a37', borderRadius: '4px', padding: '0.5rem', width: '100%'}}
+                  >
+                    <option value={NeuronType.EXCITATORY}>Excitatory (E)</option>
+                    <option value={NeuronType.INHIBITORY}>Inhibitory (I)</option>
+                  </select>
+                </div>
+
+                {newNeuronType === NeuronType.EXCITATORY && (
+                  <div style={{marginBottom: '1rem'}}>
+                    <label style={{color: '#b0a99f', display: 'block', marginBottom: '0.5rem'}}>Preset (bias only):</label>
+                    <select 
+                      value={newNeuronPreset}
+                      onChange={(e) => setNewNeuronPreset(e.target.value)}
+                      style={{background: '#262421', color: '#ffffff', border: '1px solid #3d3a37', borderRadius: '4px', padding: '0.5rem', width: '100%'}}
+                    >
+                      <option value={RolePreset.OR_BIASED}>OR-biased (lower Vth, longer τₘ)</option>
+                      <option value={RolePreset.AND_BIASED}>AND-biased (higher Vth, shorter τₘ)</option>
+                      <option value={RolePreset.NEUTRAL}>Neutral (defaults)</option>
+                    </select>
+                  </div>
+                )}
+
+                <div style={{marginBottom: '1rem'}}>
+                  <label style={{color: '#b0a99f', display: 'block', marginBottom: '0.5rem'}}>Name (optional):</label>
+                  <input 
+                    type="text"
+                    value={newNeuronName}
+                    onChange={(e) => setNewNeuronName(e.target.value)}
+                    placeholder="e.g., E3, I1"
+                    style={{background: '#262421', color: '#ffffff', border: '1px solid #3d3a37', borderRadius: '4px', padding: '0.5rem', width: '100%'}}
+                  />
+                </div>
+
+                <button 
+                  onClick={addNeuronToNetwork}
+                  style={{
+                    ...controlButtonStyle,
+                    background: '#769656',
+                    width: '100%'
+                  }}
+                >
+                  Add Neuron
+                </button>
+
+                <div style={{marginTop: '1.5rem', padding: '1rem', background: '#1a1816', borderRadius: '6px', border: '1px solid #3d3a37'}}>
+                  <h5 style={{color: '#4ade80', marginBottom: '0.5rem'}}>Current Network:</h5>
+                  <div style={{color: '#b0a99f', fontSize: '0.9rem'}}>
+                    {network.meta.map((neuron, index) => (
+                      <div key={index} style={{display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem'}}>
+                        <span>{neuron.name} ({neuron.type})</span>
+                        {neuron.type !== NeuronType.INPUT && neuron.type !== NeuronType.OUTPUT && (
+                          <button 
+                            onClick={() => removeNeuronFromNetwork(index)}
+                            style={{
+                              background: '#cc4125',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '3px',
+                              padding: '0.25rem 0.5rem',
+                              fontSize: '0.8rem'
+                            }}
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Test Patterns */}
           <div style={{textAlign: 'center', marginTop: '2rem'}}>
             <h3 style={{color: '#ffffff', marginBottom: '1rem', fontFamily: 'Georgia, serif', fontSize: '1.125rem'}}>
@@ -1477,40 +1768,42 @@ export default function NeuronSimPage() {
         {/* Network Description */}
         <div style={cardStyle}>
           <h2 style={{fontSize: '1.5rem', color: '#ffffff', marginBottom: '1.5rem', fontWeight: '600', fontFamily: 'Georgia, serif', textAlign: 'center'}}>
-            Biologically Realistic XOR Network
+            Biologically Sound Neural Network Builder
           </h2>
           <div style={descriptionStyle}>
             <p style={descriptionTextStyle}>
-              This simulation demonstrates a biologically realistic XOR network with stochastic inputs and local learning:
+              This simulation lets you build neural networks with biologically realistic neurons and synapses. 
+              No "AND/OR" logic labels - roles emerge through learning!
             </p>
             <ul style={{color: '#e5e0dc', marginTop: '1rem', paddingLeft: '1.5rem'}}>
               <li style={listItemStyle}>
                 <strong style={{color: '#769656'}}>x1, x2:</strong> Poisson spike generators (no DC current)
               </li>
               <li style={listItemStyle}>
-                <strong style={{color: '#769656'}}>H_OR, H_AND:</strong> Hidden neurons with symmetry-breaking jitter
+                <strong style={{color: '#769656'}}>E1, E2:</strong> Excitatory neurons with role presets (biases only)
               </li>
               <li style={listItemStyle}>
-                <strong style={{color: '#769656'}}>O:</strong> Output neuron with STDP + intrinsic plasticity
+                <strong style={{color: '#769656'}}>O:</strong> Output neuron - spikes when net excitation > inhibition
               </li>
             </ul>
             <p style={{...descriptionTextStyle, marginTop: '1.5rem', padding: '1rem', background: '#1a1816', borderRadius: '6px', border: '1px solid #3d3a37'}}>
-              <strong style={{color: '#cc8c14'}}>Learning Mechanisms:</strong> 
-              <br/>• <strong>STDP:</strong> Pre-before-post LTP, post-before-pre LTD (sign-conserving)
-              <br/>• <strong>Intrinsic Plasticity:</strong> Homeostatic threshold adjustment (target: 8 Hz)
-              <br/>• <strong>Jitter:</strong> Asymmetry-breaking delays for natural differentiation
-              <br/>• <strong>XOR Logic:</strong> Emerges through learning, not hard-wiring
+              <strong style={{color: '#cc8c14'}}>Role Presets (biophysical biases only):</strong> 
+              <br/>• <strong>OR-biased:</strong> Lower Vth (-51mV), longer τₘ (25ms) → responds to single inputs
+              <br/>• <strong>AND-biased:</strong> Higher Vth (-49mV), shorter τₘ (15ms) → prefers coincident inputs
+              <br/>• <strong>Neutral:</strong> Default parameters - learning determines role
+              <br/>• <strong>Learning:</strong> STDP + intrinsic plasticity refine these biases
             </p>
             <p style={{...descriptionTextStyle, marginTop: '1rem', padding: '1rem', background: '#1a1816', borderRadius: '6px', border: '1px solid #3d3a37'}}>
-              <strong style={{color: '#4ade80'}}>Competition Mechanisms:</strong>
-              <br/>• <strong>Short-Term Depression (STD):</strong> Synapses fatigue after use, preventing runaway activity
-              <br/>• <strong>Probabilistic Release:</strong> Stronger synapses pass more spikes (weight-scaled probability)
-              <br/>• <strong>Lateral Inhibition:</strong> H_OR ↔ H_AND mutual suppression creates winner-take-all
-              <br/>• <strong>Visible Routing:</strong> STDP can now latch onto asymmetric patterns!
+              <strong style={{color: '#4ade80'}}>Network Builder Features:</strong>
+              <br/>• <strong>Add Neurons:</strong> Excitatory (E) or Inhibitory (I) with role presets
+              <br/>• <strong>Auto-connect:</strong> New neurons connect from inputs and to output
+              <br/>• <strong>Sign Conservation:</strong> E→E positive, I→E negative (biologically correct)
+              <br/>• <strong>Dynamic Layout:</strong> GraphView auto-arranges by neuron type
             </p>
             <p style={{...descriptionTextStyle, marginTop: '1rem', padding: '1rem', background: '#1a1816', borderRadius: '6px', border: '1px solid #3d3a37'}}>
-              <strong style={{color: '#ff6b6b'}}>Realistic Features:</strong> No constant current injection, only Poisson inputs. 
-              Network learns XOR through local plasticity rules with biological competition mechanisms!
+              <strong style={{color: '#ff6b6b'}}>Why This Works:</strong> No fake logic labels! 
+              XOR emerges when OR-biased E neurons win on single inputs, while AND-biased E neurons 
+              or I neurons suppress output on coincident inputs. Roles are determined by spike timing and learning!
             </p>
           </div>
         </div>
