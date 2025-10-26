@@ -2315,19 +2315,19 @@ export default function NeuronSimPage() {
           }}>
             <h3 style={{
               color: '#ffffff',
-              fontSize: '1.5rem',
-              marginBottom: '1rem',
+              fontSize: getResponsiveValue('1.25rem', '1.5rem', '1.5rem'),
+              marginBottom: getResponsiveValue('0.5rem', '1rem', '1rem'),
               textAlign: 'center'
             }}>
               Individual Neuron States
             </h3>
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(6, 1fr)',
-              gridTemplateRows: 'repeat(3, 1fr)',
-              gap: '1.5rem',
-              padding: '1rem',
-              minHeight: '400px',
+              gridTemplateColumns: getResponsiveValue('repeat(2, 1fr)', 'repeat(3, 1fr)', 'repeat(6, 1fr)'),
+              gridTemplateRows: getResponsiveValue('repeat(auto-fit, 1fr)', 'repeat(3, 1fr)', 'repeat(3, 1fr)'),
+              gap: getResponsiveValue('1rem', '1.5rem', '1.5rem'),
+              padding: getResponsiveValue('0.5rem', '1rem', '1rem'),
+              minHeight: getResponsiveValue('auto', '400px', '400px'),
               alignItems: 'center',
               justifyItems: 'center'
             }}>
@@ -2366,8 +2366,8 @@ export default function NeuronSimPage() {
                     }
                     
                     return {
-                      width: '60px',
-                      height: '60px',
+                      width: getResponsiveValue('50px', '60px', '60px'),
+                      height: getResponsiveValue('50px', '60px', '60px'),
                       borderRadius: '50%',
                       background: backgroundColor,
                       border: 'none',
@@ -2376,7 +2376,7 @@ export default function NeuronSimPage() {
                       alignItems: 'center',
                       justifyContent: 'center',
                       color: '#ffffff',
-                      fontSize: '0.9rem',
+                      fontSize: getResponsiveValue('0.7rem', '0.9rem', '0.9rem'),
                       fontWeight: 'bold',
                       boxShadow: `0 0 6px ${shadowColor}, 0 0 12px ${shadowColorOuter}`,
                       position: 'relative'
@@ -2397,7 +2397,7 @@ export default function NeuronSimPage() {
                       </div>
                       <div style={{ 
                         color: isActive ? '#ff9999' : '#666666',
-                        fontSize: '0.8rem',
+                        fontSize: getResponsiveValue('0.6rem', '0.8rem', '0.8rem'),
                         marginTop: '0.5rem',
                         textAlign: 'center',
                         lineHeight: '1.2'
@@ -2425,8 +2425,8 @@ export default function NeuronSimPage() {
         }}>
           <h3 style={{
             color: '#ffffff',
-            fontSize: '1.5rem',
-            marginBottom: '1rem',
+            fontSize: getResponsiveValue('1.25rem', '1.5rem', '1.5rem'),
+            marginBottom: getResponsiveValue('0.5rem', '1rem', '1rem'),
             textAlign: 'center'
           }}>
             Alzheimer's Membrane Potential Traces
@@ -2447,15 +2447,15 @@ export default function NeuronSimPage() {
         <div style={{
           background: '#1a1816',
           border: 'none',
-          borderRadius: '8px',
-          padding: '1rem',
-          marginBottom: '1rem',
+          borderRadius: getResponsiveValue('8px', '8px', '8px'),
+          padding: getResponsiveValue('0.5rem', '1rem', '1rem'),
+          marginBottom: getResponsiveValue('1rem', '1rem', '1rem'),
           boxShadow: '0 0 8px rgba(255, 107, 107, 0.6), 0 0 16px rgba(255, 107, 107, 0.3)'
         }}>
           <h3 style={{
             color: '#ffffff',
-            fontSize: '1.5rem',
-            marginBottom: '1rem',
+            fontSize: getResponsiveValue('1.25rem', '1.5rem', '1.5rem'),
+            marginBottom: getResponsiveValue('0.5rem', '1rem', '1rem'),
             textAlign: 'center'
           }}>
             Alzheimer's Neural Activity Raster Plot
