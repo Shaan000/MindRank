@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import IndividualNeuronStates from './components/IndividualNeuronStates';
 import MembraneTraces from './components/MembraneTraces';
 import RasterPlot from './components/RasterPlot';
@@ -723,6 +724,7 @@ function FixedNetwork({ currentMode, onModeChange, analyzeMode, analyzeSynapses,
 
 // Main Simulation Page
 export default function NeuronSimPage() {
+  const navigate = useNavigate();
   const [currentMode, setCurrentMode] = useState(null);
   const [analyzeMode, setAnalyzeMode] = useState(false);
   const [capturedEdgeStrengths, setCapturedEdgeStrengths] = useState(new Map());
@@ -1148,24 +1150,29 @@ export default function NeuronSimPage() {
   const heroStyle = {
     background: 'linear-gradient(135deg, #769656 0%, #5d7c3f 100%)',
     textAlign: 'center',
-    padding: '3rem 2rem',
-    position: 'relative'
+    padding: '4rem 2rem',
+    position: 'relative',
+    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.2)',
+    borderBottom: '2px solid #8fb366'
   };
 
   const titleStyle = {
-    fontSize: '2.5rem',
-    fontWeight: '700',
-    marginBottom: '1rem',
+    fontSize: '3rem',
+    fontWeight: '800',
+    marginBottom: '1.5rem',
     color: '#ffffff',
     fontFamily: 'Georgia, serif',
-    textShadow: '0 2px 4px rgba(0, 0, 0, 0.3)'
+    textShadow: '0 3px 6px rgba(0, 0, 0, 0.4)',
+    letterSpacing: '0.5px'
   };
 
   const subtitleStyle = {
-    fontSize: '1.125rem',
-    color: 'rgba(255, 255, 255, 0.9)',
-    marginBottom: '2rem',
-    fontWeight: '400'
+    fontSize: '1.25rem',
+    color: 'rgba(255, 255, 255, 0.95)',
+    marginBottom: '2.5rem',
+    fontWeight: '500',
+    textShadow: '0 1px 3px rgba(0, 0, 0, 0.3)',
+    letterSpacing: '0.3px'
   };
 
   const backButtonStyle = {
@@ -1173,65 +1180,83 @@ export default function NeuronSimPage() {
     alignItems: 'center',
     justifyContent: 'center',
     gap: '0.5rem',
-    background: '#ffffff',
+    background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)',
     color: '#262421',
-    padding: '0.75rem 1.5rem',
-    borderRadius: '6px',
-    fontWeight: '600',
-    fontSize: '0.9rem',
-    border: 'none',
+    padding: '1rem 2rem',
+    borderRadius: '10px',
+    fontWeight: '700',
+    fontSize: '1rem',
+    border: '2px solid #e9ecef',
     cursor: 'pointer',
-    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
-    textDecoration: 'none'
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+    textDecoration: 'none',
+    transition: 'all 0.3s ease',
+    letterSpacing: '0.3px'
   };
 
   const sectionStyle = {
-    background: '#262421',
-    padding: '3rem 2rem',
-    overflowX: 'hidden'
+    background: 'linear-gradient(135deg, #262421 0%, #1a1816 100%)',
+    padding: '4rem 2rem',
+    overflowX: 'hidden',
+    boxShadow: 'inset 0 2px 8px rgba(0, 0, 0, 0.1)'
   };
 
   const cardStyle = {
-    background: '#262421',
-    borderRadius: '12px',
-    padding: '2rem',
-    margin: '1.5rem auto',
+    background: 'linear-gradient(135deg, #262421 0%, #1a1816 100%)',
+    borderRadius: '16px',
+    padding: '2.5rem',
+    margin: '2rem auto',
     maxWidth: '1200px',
-    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-    border: '1px solid #3d3a37',
-    overflowX: 'hidden'
+    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.2), 0 4px 12px rgba(0, 0, 0, 0.1)',
+    border: '2px solid #3d3a37',
+    overflowX: 'hidden',
+    position: 'relative'
   };
 
   const buttonStyle = {
-    background: '#1a1816',
+    background: 'linear-gradient(135deg, #2a2824 0%, #1a1816 100%)',
     color: '#b0a99f',
-    padding: '0.75rem 1.5rem',
-    borderRadius: '6px',
-    border: '1px solid #3d3a37',
-    fontWeight: '600',
-    fontSize: '1rem',
+    padding: '1.25rem 2.5rem',
+    borderRadius: '12px',
+    border: '2px solid #3d3a37',
+    fontWeight: '700',
+    fontSize: '1.1rem',
     cursor: 'pointer',
-    margin: '0.25rem',
+    margin: '0.75rem',
     fontFamily: 'Georgia, serif',
-    minWidth: '120px'
+    minWidth: '160px',
+    boxShadow: '0 6px 16px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.1)',
+    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+    position: 'relative',
+    overflow: 'hidden'
   };
 
   const activeButtonStyle = {
     ...buttonStyle,
-    background: '#769656',
-    color: '#000000'
+    background: 'linear-gradient(135deg, #8fb366 0%, #769656 50%, #5d7c3f 100%)',
+    color: '#ffffff',
+    border: '2px solid #4ade80',
+    boxShadow: '0 8px 24px rgba(118, 150, 86, 0.5), 0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 2px rgba(255, 255, 255, 0.2)',
+    transform: 'translateY(-3px)',
+    textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)'
   };
 
   const bannerStyle = {
     textAlign: 'center',
-    marginBottom: '1rem',
-    padding: '0.75rem',
-    background: currentMode === 'A' ? '#4ade80' : '#ff6b6b',
+    marginBottom: '1.5rem',
+    padding: '1rem 2rem',
+    background: currentMode === 'A' ? 'linear-gradient(135deg, #4ade80 0%, #22c55e 100%)' : 'linear-gradient(135deg, #ff6b6b 0%, #ef4444 100%)',
     color: '#000000',
-    borderRadius: '6px',
-    fontWeight: 'bold',
-    fontSize: '1.1rem',
-    fontFamily: 'Georgia, serif'
+    borderRadius: '12px',
+    fontWeight: '800',
+    fontSize: '1.2rem',
+    fontFamily: 'Georgia, serif',
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
+    border: '2px solid rgba(255, 255, 255, 0.2)',
+    textShadow: '0 1px 2px rgba(255, 255, 255, 0.3)',
+    letterSpacing: '0.5px'
   };
 
   // Alzheimer's simulation logic - completely independent
@@ -1637,12 +1662,12 @@ export default function NeuronSimPage() {
     <div style={homepageStyle}>
       {/* Hero Section */}
       <div style={heroStyle}>
-        <h1 style={titleStyle}>🧠 Interactive Neuron Simulation</h1>
-        <p style={subtitleStyle}>Watch Pattern Learning Emerge from Fixed Neural Networks</p>
+        <h1 style={titleStyle}>Interactive Neuron Simulation</h1>
+        <p style={subtitleStyle}>Watch Pattern Learning Emerge from Biologically Accurate Neural Networks</p>
         
         <button 
           style={backButtonStyle}
-          onClick={() => window.history.back()}
+          onClick={() => navigate('/')}
         >
           ← Back to Home
         </button>
@@ -1775,14 +1800,42 @@ export default function NeuronSimPage() {
               <button 
               onClick={() => setCurrentMode('A')}
               style={currentMode === 'A' ? activeButtonStyle : buttonStyle}
+              onMouseOver={(e) => {
+                if (currentMode !== 'A') {
+                  e.target.style.background = 'linear-gradient(135deg, #3d3a37 0%, #1a1816 100%)';
+                  e.target.style.transform = 'translateY(-1px)';
+                  e.target.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.4)';
+                }
+              }}
+              onMouseOut={(e) => {
+                if (currentMode !== 'A') {
+                  e.target.style.background = 'linear-gradient(135deg, #1a1816 0%, #262421 100%)';
+                  e.target.style.transform = 'translateY(0)';
+                  e.target.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.3)';
+                }
+              }}
               >
-                Train Pattern A
+                🧠 Train Pattern A
               </button>
               <button 
               onClick={() => setCurrentMode('B')}
               style={currentMode === 'B' ? activeButtonStyle : buttonStyle}
+              onMouseOver={(e) => {
+                if (currentMode !== 'B') {
+                  e.target.style.background = 'linear-gradient(135deg, #3d3a37 0%, #1a1816 100%)';
+                  e.target.style.transform = 'translateY(-1px)';
+                  e.target.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.4)';
+                }
+              }}
+              onMouseOut={(e) => {
+                if (currentMode !== 'B') {
+                  e.target.style.background = 'linear-gradient(135deg, #1a1816 0%, #262421 100%)';
+                  e.target.style.transform = 'translateY(0)';
+                  e.target.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.3)';
+                }
+              }}
               >
-                Train Pattern B
+                🧠 Train Pattern B
               </button>
               <button 
               onClick={analyzeMode ? exitAnalyze : analyzeSynapses}
@@ -1846,7 +1899,17 @@ export default function NeuronSimPage() {
           {/* Alzheimer's Raster Plot - REMOVED (was showing empty/not working) */}
 
           {/* Network Canvas */}
-          <div style={{height: '800px', width: '100%', background: '#1a1816', borderRadius: '8px', border: 'none', marginBottom: '1rem', overflow: 'hidden', position: 'relative', boxShadow: '0 0 8px rgba(74, 222, 128, 0.6), 0 0 16px rgba(74, 222, 128, 0.3)'}}>
+          <div style={{
+            height: '800px', 
+            width: '100%', 
+            background: 'linear-gradient(135deg, #1a1816 0%, #0f0e0c 100%)', 
+            borderRadius: '16px', 
+            border: '3px solid #3d3a37', 
+            marginBottom: '2rem', 
+            overflow: 'hidden', 
+            position: 'relative', 
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4), 0 0 20px rgba(74, 222, 128, 0.4), inset 0 2px 4px rgba(255, 255, 255, 0.05)'
+          }}>
             <FixedNetwork 
               currentMode={currentMode}
               onModeChange={handleModeChange}
@@ -1859,16 +1922,36 @@ export default function NeuronSimPage() {
             />
           </div>
           
-          <div style={{textAlign: 'center', color: '#b0a99f', fontSize: '0.9rem'}}>
-            <span style={{color: '#4ade80'}}>●</span> Excitatory connections &nbsp;&nbsp;
-            <span style={{color: '#ff6b6b'}}>●</span> Inhibitory connections &nbsp;&nbsp;
-            <span style={{color: '#4ade80'}}>⚡</span> Signal particles
+          <div style={{
+            textAlign: 'center', 
+            color: '#b0a99f', 
+            fontSize: '1rem',
+            fontWeight: '600',
+            padding: '1rem 2rem',
+            background: 'linear-gradient(135deg, #1a1816 0%, #262421 100%)',
+            borderRadius: '12px',
+            border: '1px solid #3d3a37',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
+            letterSpacing: '0.3px'
+          }}>
+            <span style={{color: '#4ade80', fontSize: '1.2rem'}}>●</span> Excitatory connections &nbsp;&nbsp;&nbsp;
+            <span style={{color: '#ff6b6b', fontSize: '1.2rem'}}>●</span> Inhibitory connections &nbsp;&nbsp;&nbsp;
+            <span style={{color: '#4ade80', fontSize: '1.2rem'}}>⚡</span> Signal particles
           </div>
         </div>
 
         {/* Description */}
         <div style={cardStyle}>
-          <h2 style={{fontSize: '1.5rem', color: '#ffffff', marginBottom: '1.5rem', fontWeight: '600', fontFamily: 'Georgia, serif', textAlign: 'center'}}>
+          <h2 style={{
+            fontSize: '2rem', 
+            color: '#ffffff', 
+            marginBottom: '2rem', 
+            fontWeight: '800', 
+            fontFamily: 'Georgia, serif', 
+            textAlign: 'center',
+            textShadow: '0 2px 4px rgba(0, 0, 0, 0.3)',
+            letterSpacing: '0.5px'
+          }}>
             🧠 Network Pattern Learning Demo
           </h2>
           <div style={{
@@ -1940,19 +2023,25 @@ export default function NeuronSimPage() {
 
       {/* ALZHEIMER'S SIMULATION - RED THEME */}
       <div style={{
-        background: '#262421',
-        borderRadius: '12px',
-        padding: '2rem',
-        margin: '1.5rem auto',
+        background: 'linear-gradient(135deg, #262421 0%, #1a1816 100%)',
+        borderRadius: '16px',
+        padding: '2.5rem',
+        margin: '2rem auto',
         maxWidth: '1200px',
-        boxShadow: '0 0 20px rgba(0, 0, 0, 0.5)',
-        overflowX: 'hidden'
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.2)',
+        overflowX: 'hidden',
+        border: '2px solid #3d3a37',
+        position: 'relative'
       }}>
         <h2 style={{
           color: '#ffffff',
-          fontSize: '2rem',
-          marginBottom: '1.5rem',
-          textAlign: 'center'
+          fontSize: '2.5rem',
+          marginBottom: '2rem',
+          textAlign: 'center',
+          fontWeight: '800',
+          fontFamily: 'Georgia, serif',
+          textShadow: '0 3px 6px rgba(0, 0, 0, 0.4)',
+          letterSpacing: '0.5px'
         }}>
           Alzheimer's Neuron Simulation
         </h2>
@@ -1984,13 +2073,6 @@ export default function NeuronSimPage() {
             }}>
               {alzheimerTrainingElapsed}s
             </div>
-            <div style={{
-              color: '#ff9999',
-              fontSize: '1rem',
-              marginTop: '0.5rem'
-            }}>
-              Pattern {alzheimerMode} - Degradation Progress: {Math.min(100, Math.round((alzheimerTrainingElapsed / 30) * 100))}%
-            </div>
           </div>
         )}
 
@@ -2005,50 +2087,116 @@ export default function NeuronSimPage() {
           <button
             onClick={() => handleAlzheimerModeChange('A')}
             style={{
-              background: alzheimerMode === 'A' ? '#ff6b6b' : '#2d2b28',
-              color: alzheimerMode === 'A' ? '#000000' : '#ff6b6b',
+              background: alzheimerMode === 'A' 
+                ? 'linear-gradient(135deg, #ff6b6b 0%, #ff4444 100%)' 
+                : 'linear-gradient(135deg, #2d2b28 0%, #1a1816 100%)',
+              color: alzheimerMode === 'A' ? '#ffffff' : '#ff6b6b',
               border: '2px solid #ff6b6b',
-              borderRadius: '8px',
-              padding: '0.75rem 1.5rem',
-              fontSize: '1rem',
-              fontWeight: 'bold',
+              borderRadius: '10px',
+              padding: '1rem 2rem',
+              fontSize: '1.1rem',
+              fontWeight: '700',
               cursor: 'pointer',
               transition: 'all 0.3s ease',
-              boxShadow: alzheimerMode === 'A' ? '0 0 15px rgba(255, 107, 107, 0.8)' : 'none'
+              boxShadow: alzheimerMode === 'A' 
+                ? '0 6px 20px rgba(255, 107, 107, 0.4)' 
+                : '0 4px 12px rgba(0, 0, 0, 0.3)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              minWidth: '160px',
+              transform: alzheimerMode === 'A' ? 'translateY(-2px)' : 'translateY(0)'
+            }}
+            onMouseOver={(e) => {
+              if (alzheimerMode !== 'A') {
+                e.target.style.background = 'linear-gradient(135deg, #3d2b28 0%, #2d1a16 100%)';
+                e.target.style.transform = 'translateY(-1px)';
+                e.target.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.4)';
+              }
+            }}
+            onMouseOut={(e) => {
+              if (alzheimerMode !== 'A') {
+                e.target.style.background = 'linear-gradient(135deg, #2d2b28 0%, #1a1816 100%)';
+                e.target.style.transform = 'translateY(0)';
+                e.target.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.3)';
+              }
             }}
           >
-            Train Pattern A
+            🧠 Train Pattern A
           </button>
           <button
             onClick={() => handleAlzheimerModeChange('B')}
             style={{
-              background: alzheimerMode === 'B' ? '#ff6b6b' : '#2d2b28',
-              color: alzheimerMode === 'B' ? '#000000' : '#ff6b6b',
+              background: alzheimerMode === 'B' 
+                ? 'linear-gradient(135deg, #ff6b6b 0%, #ff4444 100%)' 
+                : 'linear-gradient(135deg, #2d2b28 0%, #1a1816 100%)',
+              color: alzheimerMode === 'B' ? '#ffffff' : '#ff6b6b',
               border: '2px solid #ff6b6b',
-              borderRadius: '8px',
-              padding: '0.75rem 1.5rem',
-              fontSize: '1rem',
-              fontWeight: 'bold',
+              borderRadius: '10px',
+              padding: '1rem 2rem',
+              fontSize: '1.1rem',
+              fontWeight: '700',
               cursor: 'pointer',
               transition: 'all 0.3s ease',
-              boxShadow: alzheimerMode === 'B' ? '0 0 15px rgba(255, 107, 107, 0.8)' : 'none'
+              boxShadow: alzheimerMode === 'B' 
+                ? '0 6px 20px rgba(255, 107, 107, 0.4)' 
+                : '0 4px 12px rgba(0, 0, 0, 0.3)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              minWidth: '160px',
+              transform: alzheimerMode === 'B' ? 'translateY(-2px)' : 'translateY(0)'
+            }}
+            onMouseOver={(e) => {
+              if (alzheimerMode !== 'B') {
+                e.target.style.background = 'linear-gradient(135deg, #3d2b28 0%, #2d1a16 100%)';
+                e.target.style.transform = 'translateY(-1px)';
+                e.target.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.4)';
+              }
+            }}
+            onMouseOut={(e) => {
+              if (alzheimerMode !== 'B') {
+                e.target.style.background = 'linear-gradient(135deg, #2d2b28 0%, #1a1816 100%)';
+                e.target.style.transform = 'translateY(0)';
+                e.target.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.3)';
+              }
             }}
           >
-            Train Pattern B
+            🧠 Train Pattern B
           </button>
           <button
             onClick={alzheimerAnalyzeMode ? alzheimerExitAnalyze : alzheimerAnalyzeSynapses}
             style={{
-              background: alzheimerAnalyzeMode ? '#ff8c00' : '#2d2b28',
-              color: alzheimerAnalyzeMode ? '#000000' : '#ff8c00',
+              background: alzheimerAnalyzeMode 
+                ? 'linear-gradient(135deg, #ff8c00 0%, #ff6b00 100%)' 
+                : 'linear-gradient(135deg, #2d2b28 0%, #1a1816 100%)',
+              color: alzheimerAnalyzeMode ? '#ffffff' : '#ff8c00',
               border: '2px solid #ff8c00',
-              borderRadius: '8px',
-              padding: '0.75rem 1.5rem',
-              fontSize: '1rem',
-              fontWeight: 'bold',
+              borderRadius: '10px',
+              padding: '1rem 2rem',
+              fontSize: '1.1rem',
+              fontWeight: '700',
               cursor: 'pointer',
               transition: 'all 0.3s ease',
-              boxShadow: alzheimerAnalyzeMode ? '0 0 15px rgba(255, 140, 0, 0.8)' : 'none'
+              boxShadow: alzheimerAnalyzeMode 
+                ? '0 6px 20px rgba(255, 140, 0, 0.4)' 
+                : '0 4px 12px rgba(0, 0, 0, 0.3)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              minWidth: '160px',
+              transform: alzheimerAnalyzeMode ? 'translateY(-2px)' : 'translateY(0)'
+            }}
+            onMouseOver={(e) => {
+              if (!alzheimerAnalyzeMode) {
+                e.target.style.background = 'linear-gradient(135deg, #3d2b28 0%, #2d1a16 100%)';
+                e.target.style.transform = 'translateY(-1px)';
+                e.target.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.4)';
+              }
+            }}
+            onMouseOut={(e) => {
+              if (!alzheimerAnalyzeMode) {
+                e.target.style.background = 'linear-gradient(135deg, #2d2b28 0%, #1a1816 100%)';
+                e.target.style.transform = 'translateY(0)';
+                e.target.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.3)';
+              }
             }}
           >
             {alzheimerAnalyzeMode ? 'Exit Analysis' : 'Analyze Synapses'}
@@ -2056,15 +2204,29 @@ export default function NeuronSimPage() {
           <button
             onClick={alzheimerResetSimulation}
             style={{
-              background: '#2d2b28',
+              background: 'linear-gradient(135deg, #2d2b28 0%, #1a1816 100%)',
               color: '#ff6b6b',
               border: '2px solid #ff6b6b',
-              borderRadius: '8px',
-              padding: '0.75rem 1.5rem',
-              fontSize: '1rem',
-              fontWeight: 'bold',
+              borderRadius: '10px',
+              padding: '1rem 2rem',
+              fontSize: '1.1rem',
+              fontWeight: '700',
               cursor: 'pointer',
-              transition: 'all 0.3s ease'
+              transition: 'all 0.3s ease',
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              minWidth: '160px'
+            }}
+            onMouseOver={(e) => {
+              e.target.style.background = 'linear-gradient(135deg, #3d2b28 0%, #2d1a16 100%)';
+              e.target.style.transform = 'translateY(-1px)';
+              e.target.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.4)';
+            }}
+            onMouseOut={(e) => {
+              e.target.style.background = 'linear-gradient(135deg, #2d2b28 0%, #1a1816 100%)';
+              e.target.style.transform = 'translateY(0)';
+              e.target.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.3)';
             }}
           >
             Reset Simulation
@@ -2282,57 +2444,69 @@ export default function NeuronSimPage() {
 
         {/* Alzheimer's Simulation Description */}
         <div style={{
-          background: '#1a1816',
-          padding: '1.5rem',
-          borderRadius: '8px',
-          border: '1px solid #3d3a37',
-          marginTop: '1.5rem'
+          background: 'linear-gradient(135deg, #1a1816 0%, #0f0e0c 100%)',
+          padding: '2.5rem',
+          borderRadius: '16px',
+          border: '2px solid #3d3a37',
+          marginTop: '2rem',
+          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.3), inset 0 2px 4px rgba(255, 255, 255, 0.05)',
+          position: 'relative'
         }}>
           <h3 style={{
             color: '#ffffff',
-            fontSize: '1.25rem',
-            marginBottom: '1rem',
-            fontWeight: '600',
-            fontFamily: 'Georgia, serif'
+            fontSize: '1.75rem',
+            marginBottom: '1.5rem',
+            fontWeight: '800',
+            fontFamily: 'Georgia, serif',
+            textAlign: 'center',
+            textShadow: '0 2px 4px rgba(0, 0, 0, 0.3)',
+            letterSpacing: '0.5px'
           }}>
             Alzheimer's Disease Effects on Neural Networks
           </h3>
           <p style={{
             color: '#e5e0dc',
-            lineHeight: '1.6',
-            fontSize: '1rem',
-            marginBottom: '1rem'
+            lineHeight: '1.7',
+            fontSize: '1.1rem',
+            marginBottom: '1.5rem',
+            fontWeight: '500',
+            textAlign: 'center'
           }}>
             In this simulation, you will observe how Alzheimer's disease affects neural network learning:
           </p>
           <ul style={{
             color: '#e5e0dc',
-            marginTop: '1rem',
-            paddingLeft: '1.5rem',
-            lineHeight: '1.6'
+            marginTop: '1.5rem',
+            paddingLeft: '2rem',
+            lineHeight: '1.7',
+            fontSize: '1.1rem'
           }}>
-            <li style={{marginBottom: '0.75rem', fontFamily: 'Georgia, serif'}}>
-              <strong style={{color: '#ff6b6b'}}>Stubborn Synapses:</strong> Some connections become rigid and do not weaken when patterns change, preventing the network from adapting to new input patterns.
+            <li style={{marginBottom: '1rem', fontFamily: 'Georgia, serif', fontWeight: '500'}}>
+              <strong style={{color: '#ff6b6b', fontSize: '1.1rem'}}>Stubborn Synapses:</strong> Some connections become rigid and do not weaken when patterns change, preventing the network from adapting to new input patterns.
             </li>
-            <li style={{marginBottom: '0.75rem', fontFamily: 'Georgia, serif'}}>
-              <strong style={{color: '#ff6b6b'}}>Incomplete Formation:</strong> Many synapses fail to form properly, creating gaps in the neural pathway that prevent effective signal transmission.
+            <li style={{marginBottom: '1rem', fontFamily: 'Georgia, serif', fontWeight: '500'}}>
+              <strong style={{color: '#ff6b6b', fontSize: '1.1rem'}}>Incomplete Formation:</strong> Many synapses fail to form properly, creating gaps in the neural pathway that prevent effective signal transmission.
             </li>
-            <li style={{marginBottom: '0.75rem', fontFamily: 'Georgia, serif'}}>
-              <strong style={{color: '#ff6b6b'}}>Erratic Output:</strong> The output neuron fires irregularly and unpredictably because proper connections cannot be established, leading to random bursts and long pauses.
+            <li style={{marginBottom: '1rem', fontFamily: 'Georgia, serif', fontWeight: '500'}}>
+              <strong style={{color: '#ff6b6b', fontSize: '1.1rem'}}>Erratic Output:</strong> The output neuron fires irregularly and unpredictably because proper connections cannot be established, leading to random bursts and long pauses.
             </li>
-            <li style={{marginBottom: '0.75rem', fontFamily: 'Georgia, serif'}}>
-              <strong style={{color: '#ff6b6b'}}>No Pattern Learning:</strong> Despite using the same input patterns (I1, I3, I5 for Pattern A and I2, I4, I6 for Pattern B), the synapses cannot adapt to the specific firing patterns, preventing the network from learning to distinguish between different inputs.
+            <li style={{marginBottom: '1rem', fontFamily: 'Georgia, serif', fontWeight: '500'}}>
+              <strong style={{color: '#ff6b6b', fontSize: '1.1rem'}}>No Pattern Learning:</strong> Despite using the same input patterns (I1, I3, I5 for Pattern A and I2, I4, I6 for Pattern B), the synapses cannot adapt to the specific firing patterns, preventing the network from learning to distinguish between different inputs.
             </li>
           </ul>
           <p style={{
             color: '#b0a99f',
-            fontSize: '0.9rem',
+            fontSize: '1rem',
             fontStyle: 'italic',
-            marginTop: '1rem',
-            padding: '0.75rem',
-            background: '#262421',
-            borderRadius: '4px',
-            border: '1px solid #3d3a37'
+            marginTop: '2rem',
+            padding: '1.5rem',
+            background: 'linear-gradient(135deg, #262421 0%, #1a1816 100%)',
+            borderRadius: '12px',
+            border: '2px solid #3d3a37',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
+            textAlign: 'center',
+            fontWeight: '500',
+            lineHeight: '1.6'
           }}>
             This demonstrates how synaptic degradation in Alzheimer's disease prevents the formation of stable neural pathways, leading to memory loss and cognitive decline.
           </p>

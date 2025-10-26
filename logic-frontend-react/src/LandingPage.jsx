@@ -209,7 +209,9 @@ export default function LandingPage() {
     background: 'linear-gradient(135deg, #769656 0%, #5d7c3f 100%)',
     textAlign: 'center',
     padding: '6rem 2rem',
-    position: 'relative'
+    position: 'relative',
+    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
+    borderBottom: '2px solid #8fb366'
   };
 
   const titleStyle = {
@@ -236,12 +238,13 @@ export default function LandingPage() {
     background: '#ffffff',
     color: '#262421',
     padding: '0.875rem 2rem',
-    borderRadius: '6px',
+    borderRadius: '8px',
     fontWeight: '600',
     fontSize: '1rem',
-    border: 'none',
+    border: '1px solid #e9ecef',
     cursor: 'pointer',
-    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)'
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
+    transition: 'all 0.3s ease'
   };
 
   const sectionStyle = {
@@ -274,13 +277,15 @@ export default function LandingPage() {
     background: '#cc8c14',
     color: 'white',
     padding: '1rem 2rem',
-    borderRadius: '6px',
+    borderRadius: '8px',
     border: 'none',
     fontWeight: '600',
     fontSize: '1rem',
     cursor: 'pointer',
     marginTop: '2rem',
-    width: '100%'
+    width: '100%',
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
+    transition: 'all 0.3s ease'
   };
 
   const footerStyle = {
@@ -391,6 +396,42 @@ export default function LandingPage() {
         <h1 style={titleStyle}>Welcome to MindRank</h1>
         <p style={subtitleStyle}>Master the Art of Logic Puzzles</p>
         
+        {/* Neuron Simulation Button - Prominent at top */}
+        <div style={{marginBottom: '2rem', display: 'flex', justifyContent: 'center'}}>
+          <button 
+            style={{
+              background: 'linear-gradient(135deg, #769656 0%, #5d7c3f 100%)',
+              color: '#ffffff',
+              padding: '1.25rem 2.5rem',
+              borderRadius: '12px',
+              border: '2px solid #8fb366',
+              fontWeight: '700',
+              fontSize: '1.2rem',
+              cursor: 'pointer',
+              fontFamily: 'Georgia, serif',
+              boxShadow: '0 6px 20px rgba(118, 150, 86, 0.3)',
+              transition: 'all 0.3s ease',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              minWidth: '300px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+            onMouseOver={(e) => {
+              e.target.style.transform = 'translateY(-2px)';
+              e.target.style.boxShadow = '0 8px 24px rgba(118, 150, 86, 0.4)';
+            }}
+            onMouseOut={(e) => {
+              e.target.style.transform = 'translateY(0)';
+              e.target.style.boxShadow = '0 6px 20px rgba(118, 150, 86, 0.3)';
+            }}
+            onClick={() => window.open('/neuron-sim', '_blank')}
+          >
+            Interactive Neuron Simulation
+          </button>
+        </div>
+        
         <button 
           style={googleButtonStyle}
           onClick={handleGoogleSignIn}
@@ -430,7 +471,7 @@ export default function LandingPage() {
                 onClick={generateSamplePuzzle}
                 disabled={isLoading}
               >
-                🎲 Generate New Puzzle
+                Generate New Puzzle
               </button>
             </div>
           </>
@@ -566,12 +607,6 @@ export default function LandingPage() {
           onClick={() => navigate('/leaderboard-signin')}
         >
           📊 Leaderboard
-        </button>
-        <button 
-          style={footerButtonStyle}
-          onClick={() => window.open('/neuron-sim', '_blank')}
-        >
-          🧠 Neuron Simulation
         </button>
       </footer>
     </div>
