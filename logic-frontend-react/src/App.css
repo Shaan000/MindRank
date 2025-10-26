@@ -5,6 +5,39 @@
   background: #262421;
   color: #ffffff;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+  overflow-x: hidden;
+  position: relative;
+}
+
+/* Ensure the root element fills the full viewport */
+#root {
+  min-height: 100vh;
+  background: #262421;
+}
+
+/* Prevent horizontal scrolling globally */
+body, html {
+  overflow-x: hidden;
+  background: #262421;
+  min-height: 100vh;
+}
+
+/* Ensure full page background coverage */
+* {
+  box-sizing: border-box;
+}
+
+/* Remove any default margins/padding that might cause white space */
+body {
+  margin: 0;
+  padding: 0;
+  background: #262421;
+}
+
+html {
+  margin: 0;
+  padding: 0;
+  background: #262421;
 }
 
 /* Homepage specific styles */

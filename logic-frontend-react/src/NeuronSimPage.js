@@ -1,477 +1,83 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import IndividualNeuronStates from './components/IndividualNeuronStates';
+import MembraneTraces from './components/MembraneTraces';
+import RasterPlot from './components/RasterPlot';
+import SelectiveMembranePotentials from './components/SelectiveMembranePotentials';
 
-// Biologically Realistic SNN Library with Network Builder
-const DEFAULT_NEURON_PARAMS = {
-  Vrest: -65,
-  Vth: -50,
-  Vreset: -65,
-  tauM: 20,
-  tauRef: 3,
-  Rm: 1
+// Fixed Network Configuration
+const NETWORK_CONFIG = {
+  INPUTS: 6,
+  HIDDEN: 10,
+  OUTPUTS: 1,
+  MAX_PARTICLES: 20
 };
 
-// Neuron types (no logic labels!)
-const NeuronType = {
-  EXCITATORY: 'E',
-  INHIBITORY: 'I', 
-  INPUT: 'Input',
-  OUTPUT: 'Output'
+// Pattern Configuration
+const PATTERNS = {
+  A: { activeInputs: [0, 2, 4] }, // Inputs 1, 3, 5
+  B: { activeInputs: [1, 3, 5] }  // Inputs 2, 4, 6
 };
 
-// Role presets (biophysical biases only)
-const RolePreset = {
-  OR_BIASED: 'OR_BIASED',    // Lower Vth, longer tauM
-  AND_BIASED: 'AND_BIASED',  // Higher Vth, shorter tauM  
-  NEUTRAL: 'NEUTRAL'         // Defaults
-};
-
-const DEFAULT_STDP_PARAMS = {
-  Apos: 0.01,
-  Aneg: 0.012,
-  tauPos: 20,
-  tauNeg: 20,
-  wMin: -2,
-  wMax: 2,
-  enabled: true
-};
-
-const DEFAULT_INTRINSIC_PARAMS = {
-  eta: 1e-4,
-  targetHz: 8,
-  enabled: true,
-  windowMs: 200
-};
-
-const DEFAULT_STD_PARAMS = {
-  U: 0.2,        // utilization per spike
-  tauRec: 600    // recovery time constant (ms)
-};
-
-// Jitter function for breaking symmetry
-function jitterDelayMs(base) {
-  const j = (Math.random() - 0.5) * 1.0;
-  return Math.max(1, Math.round(base + j));
-}
-
-// Poisson spike generation
-function maybeEmitPoisson(rateHz, dtMs) {
-  const p = 1 - Math.exp(-rateHz * dtMs / 1000);
-  return Math.random() < p;
-}
-
-// Sign-conserving weight update
-function signConserve(w, inhibitory) {
-  if (inhibitory) return Math.min(w, 0);
-  return Math.max(w, 0);
-}
-
-// Clamp function
-function clamp(value, min, max) {
-  return Math.min(Math.max(value, min), max);
-}
-
-// Short-term depression recovery
-function recoverSTD(syn, params, t) {
-  const dt = Math.max(0, t - syn.lastUpdateMs);
-  if (dt > 0) {
-    syn.R = 1 - (1 - syn.R) * Math.exp(-dt / params.tauRec);
-    syn.lastUpdateMs = t;
-  }
-}
-
-// Probabilistic vesicle release
-function preEnqueueWithRelease(net, synIdx) {
-  const p = net.sParams[synIdx];
-  const prel = Math.min(Math.max(0.05, 0.4 * Math.abs(p.w)), 0.9);
-  
-  if (Math.random() < prel) {
-    const syn = net.synapses[synIdx];
-    const steps = Math.max(1, Math.round(p.delayMs / net.dtMs));
-    syn.delayQueue[(syn.head + steps) % syn.delayQueue.length] += 1;
-    return true; // Release succeeded
-  }
-  return false; // Release failed
-}
-
-// Network Builder Functions
-function getPresetParams(preset, neuronType) {
-  const base = { ...DEFAULT_NEURON_PARAMS };
-  
-  if (neuronType === NeuronType.INHIBITORY) {
-    return base; // Inhibitory neurons always neutral
-  }
-  
-  switch (preset) {
-    case RolePreset.OR_BIASED:
-      return { ...base, Vth: -51, tauM: 25, tauSyn: 6 };
-    case RolePreset.AND_BIASED:
-      return { ...base, Vth: -49, tauM: 15, tauSyn: 4 };
-    case RolePreset.NEUTRAL:
-    default:
-      return base;
-  }
-}
-
-function addNeuron(net, opts) {
-  const { type, name, preset = RolePreset.NEUTRAL, connectFromInputs = true, connectToOutput = true } = opts;
-  const neuronId = net.neurons.length;
-  
-  // Add neuron state and parameters
-  net.neurons.push({ V: -65, refUntilMs: 0, lastSpikeMs: -1000 });
-  net.nParams.push(getPresetParams(preset, type));
-  net.meta.push({ id: neuronId, name: name || `${type}${neuronId}`, type, preset });
-  
-  // Initialize fan connections
-  net.fanOut.push([]);
-  net.fanIn.push([]);
-  
-  // Initialize spike history for new neuron
-  if (net.spikeHistory) {
-    net.spikeHistory.push([]);
-  }
-  
-  // Connect from inputs if requested
-  if (connectFromInputs && neuronId > 1) { // Skip if this is x1 or x2
-    const inputWeight = type === NeuronType.INHIBITORY ? -0.02 : 0.02;
-    
-    // x1 -> new neuron
-    addSynapse(net, {
-      pre: 0, post: neuronId,
-      w: inputWeight, delayMs: jitterDelayMs(1), tauSyn: 5, jump: 1,
-      U: 0.2, tauRec: 600
-    });
-    
-    // x2 -> new neuron  
-    addSynapse(net, {
-      pre: 1, post: neuronId,
-      w: inputWeight, delayMs: jitterDelayMs(1), tauSyn: 5, jump: 1,
-      U: 0.2, tauRec: 600
-    });
-  }
-  
-  // Connect to output if requested
-  if (connectToOutput && neuronId > 1) {
-    const outputWeight = type === NeuronType.INHIBITORY ? -0.05 : 0.03;
-    const delay = type === NeuronType.INHIBITORY ? 1 : 2; // I arrives first
-    
-    addSynapse(net, {
-      pre: neuronId, post: 4, // Output is always neuron 4
-      w: outputWeight, delayMs: delay, tauSyn: 5, jump: 1,
-      U: 0.2, tauRec: 600
-    });
-  }
-  
-  return neuronId;
-}
-
-function addSynapse(net, opts) {
-  const { pre, post, w = 0.1, delayMs = 1, tauSyn = 5, jump = 1, U = 0.2, tauRec = 600 } = opts;
-  
-  // Determine sign from pre-neuron type
-  const preType = net.meta[pre]?.type;
-  const finalWeight = preType === NeuronType.INHIBITORY ? -Math.abs(w) : Math.abs(w);
-  
-  // Add synapse state
-  const synIdx = net.synapses.length;
-  net.synapses.push({
-    s: 0, delayQueue: new Uint16Array(Math.max(1, Math.round(delayMs / net.dtMs))),
-    head: 0, lastPreMs: -1000, lastPostMs: -1000, R: 1, lastUpdateMs: 0
-  });
-  
-  // Add synapse parameters
-  net.sParams.push({
-    pre, post, w: finalWeight, delayMs, tauSyn, jump,
-    inhibitory: preType === NeuronType.INHIBITORY,
-    U, tauRec
-  });
-  
-  // Update fan connections
-  net.fanOut[pre].push(synIdx);
-  net.fanIn[post].push(synIdx);
-  
-  return synIdx;
-}
-
-function removeNeuron(net, neuronId) {
-  if (neuronId < 2 || neuronId >= net.neurons.length) return; // Can't remove inputs/output
-  
-  // Remove all synapses connected to this neuron
-  const synapsesToRemove = [];
-  for (let i = 0; i < net.synapses.length; i++) {
-    const syn = net.sParams[i];
-    if (syn.pre === neuronId || syn.post === neuronId) {
-      synapsesToRemove.push(i);
-    }
-  }
-  
-  // Remove synapses in reverse order
-  synapsesToRemove.reverse().forEach(idx => removeSynapse(net, idx));
-  
-  // Remove neuron
-  net.neurons.splice(neuronId, 1);
-  net.nParams.splice(neuronId, 1);
-  net.meta.splice(neuronId, 1);
-  net.fanOut.splice(neuronId, 1);
-  net.fanIn.splice(neuronId, 1);
-  
-  // Remove spike history
-  if (net.spikeHistory) {
-    net.spikeHistory.splice(neuronId, 1);
-  }
-  
-  // Update synapse indices
-  for (let i = 0; i < net.sParams.length; i++) {
-    if (net.sParams[i].pre > neuronId) net.sParams[i].pre--;
-    if (net.sParams[i].post > neuronId) net.sParams[i].post--;
-  }
-}
-
-function removeSynapse(net, synIdx) {
-  if (synIdx < 0 || synIdx >= net.synapses.length) return;
-  
-  const syn = net.sParams[synIdx];
-  const pre = syn.pre;
-  const post = syn.post;
-  
-  // Remove from fan connections
-  net.fanOut[pre] = net.fanOut[pre].filter(idx => idx !== synIdx);
-  net.fanIn[post] = net.fanIn[post].filter(idx => idx !== synIdx);
-  
-  // Remove synapse
-  net.synapses.splice(synIdx, 1);
-  net.sParams.splice(synIdx, 1);
-  
-  // Update fan connection indices
-  for (let i = 0; i < net.neurons.length; i++) {
-    net.fanOut[i] = net.fanOut[i].map(idx => idx > synIdx ? idx - 1 : idx);
-    net.fanIn[i] = net.fanIn[i].map(idx => idx > synIdx ? idx - 1 : idx);
-  }
-}
-
-// Initialize biologically realistic XOR network with STDP
-function initXORSTDP() {
-  const network = {
-    tMs: 0,
-    dtMs: 1,
-    neurons: [
-      { V: -65, refUntilMs: 0, lastSpikeMs: -1000 },
-      { V: -65, refUntilMs: 0, lastSpikeMs: -1000 },
-      { V: -65, refUntilMs: 0, lastSpikeMs: -1000 },
-      { V: -65, refUntilMs: 0, lastSpikeMs: -1000 },
-      { V: -65, refUntilMs: 0, lastSpikeMs: -1000 }
-    ],
-    nParams: [
-      { ...DEFAULT_NEURON_PARAMS },
-      { ...DEFAULT_NEURON_PARAMS },
-      { ...DEFAULT_NEURON_PARAMS },
-      { ...DEFAULT_NEURON_PARAMS },
-      { ...DEFAULT_NEURON_PARAMS }
-    ],
-    meta: [
-      { id: 0, name: 'x1', type: NeuronType.INPUT },
-      { id: 1, name: 'x2', type: NeuronType.INPUT },
-      { id: 2, name: 'E1', type: NeuronType.EXCITATORY, preset: RolePreset.OR_BIASED },
-      { id: 3, name: 'E2', type: NeuronType.EXCITATORY, preset: RolePreset.AND_BIASED },
-      { id: 4, name: 'O', type: NeuronType.OUTPUT }
-    ],
-    synapses: [
-      { s: 0, delayQueue: new Uint16Array(1), head: 0, lastPreMs: -1000, lastPostMs: -1000, R: 1, lastUpdateMs: 0 },
-      { s: 0, delayQueue: new Uint16Array(1), head: 0, lastPreMs: -1000, lastPostMs: -1000, R: 1, lastUpdateMs: 0 },
-      { s: 0, delayQueue: new Uint16Array(1), head: 0, lastPreMs: -1000, lastPostMs: -1000, R: 1, lastUpdateMs: 0 },
-      { s: 0, delayQueue: new Uint16Array(1), head: 0, lastPreMs: -1000, lastPostMs: -1000, R: 1, lastUpdateMs: 0 },
-      { s: 0, delayQueue: new Uint16Array(2), head: 0, lastPreMs: -1000, lastPostMs: -1000, R: 1, lastUpdateMs: 0 },
-      { s: 0, delayQueue: new Uint16Array(1), head: 0, lastPreMs: -1000, lastPostMs: -1000, R: 1, lastUpdateMs: 0 },
-      // Lateral inhibition H_OR -> H_AND
-      { s: 0, delayQueue: new Uint16Array(1), head: 0, lastPreMs: -1000, lastPostMs: -1000, R: 1, lastUpdateMs: 0 },
-      // Lateral inhibition H_AND -> H_OR
-      { s: 0, delayQueue: new Uint16Array(1), head: 0, lastPreMs: -1000, lastPostMs: -1000, R: 1, lastUpdateMs: 0 }
-    ],
-    sParams: [
-      // x1 -> H_OR (excitatory, with jitter and STD)
-      { pre: 0, post: 2, w: 0.1, delayMs: jitterDelayMs(1), tauSyn: 5, jump: 1, inhibitory: false, U: 0.2, tauRec: 600 },
-      // x2 -> H_OR (excitatory, with jitter and STD)
-      { pre: 1, post: 2, w: 0.1, delayMs: jitterDelayMs(1), tauSyn: 5, jump: 1, inhibitory: false, U: 0.2, tauRec: 600 },
-      // x1 -> H_AND (excitatory, with jitter and STD)
-      { pre: 0, post: 3, w: 0.1, delayMs: jitterDelayMs(1), tauSyn: 5, jump: 1, inhibitory: false, U: 0.2, tauRec: 600 },
-      // x2 -> H_AND (excitatory, with jitter and STD)
-      { pre: 1, post: 3, w: 0.1, delayMs: jitterDelayMs(1), tauSyn: 5, jump: 1, inhibitory: false, U: 0.2, tauRec: 600 },
-      // H_OR -> O (excitatory, longer delay)
-      { pre: 2, post: 4, w: 0.05, delayMs: 2, tauSyn: 5, jump: 1, inhibitory: false, U: 0.2, tauRec: 600 },
-      // H_AND -> O (inhibitory, shorter delay)
-      { pre: 3, post: 4, w: -0.05, delayMs: 1, tauSyn: 5, jump: 1, inhibitory: true, U: 0.2, tauRec: 600 },
-      // Lateral inhibition H_OR -> H_AND
-      { pre: 2, post: 3, w: -0.15, delayMs: 1, tauSyn: 3, jump: 1, inhibitory: true, U: 0.2, tauRec: 300 },
-      // Lateral inhibition H_AND -> H_OR
-      { pre: 3, post: 2, w: -0.15, delayMs: 1, tauSyn: 3, jump: 1, inhibitory: true, U: 0.2, tauRec: 300 }
-    ],
-    fanOut: [[0, 2], [1, 3], [4, 6], [5, 7], []],
-    fanIn: [[], [], [0, 1, 7], [2, 3, 6], [4, 5]],
-    stdp: { ...DEFAULT_STDP_PARAMS },
-    intr: { ...DEFAULT_INTRINSIC_PARAMS },
-    inputRatesHz: [15, 15, 0, 0, 0], // Default Poisson rates
-    jitterEnabled: true,
-    spikeHistory: [[], [], [], [], []], // Track spikes for intrinsic plasticity
-    learningMode: true,
-    enableSTD: true,
-    enableRelease: true,
-    enableLatInh: true
-  };
-  return network;
-}
-
-// Keep old function for compatibility
-function initXORHard() {
-  return initXORSTDP();
-}
-
-// Biologically realistic step function with STDP and intrinsic plasticity
-function stepNetwork(net, externalSpikes = []) {
-  const result = {
-    tMs: net.tMs,
-    spikes: []
-  };
-
-  // Process external Poisson inputs (only for input neurons)
-  for (let i = 0; i < 2; i++) { // Only x1, x2
-    if (net.inputRatesHz[i] > 0) {
-      if (maybeEmitPoisson(net.inputRatesHz[i], net.dtMs)) {
-        externalSpikes.push({ target: i, atMs: net.tMs });
-      }
-    }
-  }
-
-  // Process external spikes with probabilistic release
-  for (const spike of externalSpikes) {
-    if (spike.target < net.neurons.length) {
-      result.spikes.push([spike.target, net.tMs]);
-      for (const synIdx of net.fanOut[spike.target] || []) {
-        preEnqueueWithRelease(net, synIdx);
-        net.synapses[synIdx].lastPreMs = net.tMs;
-      }
-    }
-  }
-
-  // Update neurons
-  for (let i = 0; i < net.neurons.length; i++) {
-    const neuron = net.neurons[i];
-    const params = net.nParams[i];
-
-    if (net.tMs < neuron.refUntilMs) continue;
-
-    // Deliver synaptic inputs with STD
-    let I_syn = 0;
-    for (const synIdx of net.fanIn[i] || []) {
-      const syn = net.synapses[synIdx];
-      const synParams = net.sParams[synIdx];
-      
-      // Recover STD resources
-      recoverSTD(syn, synParams, net.tMs);
-      
-      const count = syn.delayQueue[syn.head];
-      if (count > 0) {
-        // Apply STD depression
-        const effectiveJump = synParams.jump * syn.R;
-        syn.R = syn.R * (1 - synParams.U);
-        syn.s += count * effectiveJump;
-        syn.delayQueue[syn.head] = 0;
-      }
-      syn.head = (syn.head + 1) % syn.delayQueue.length;
-      I_syn += synParams.w * syn.s;
-    }
-
-    // LIF dynamics
-    const I_total = I_syn;
-    const dV_dt = (params.Vrest - neuron.V + params.Rm * I_total) / params.tauM;
-    neuron.V += dV_dt * net.dtMs;
-
-    // Check for spike
-    if (neuron.V >= params.Vth) {
-      result.spikes.push([i, net.tMs]);
-      neuron.V = params.Vreset;
-      neuron.refUntilMs = net.tMs + params.tauRef;
-      neuron.lastSpikeMs = net.tMs;
-      
-      // Enqueue with probabilistic release for internal spikes
-      for (const synIdx of net.fanOut[i] || []) {
-        preEnqueueWithRelease(net, synIdx);
-        net.synapses[synIdx].lastPreMs = net.tMs;
-      }
-    }
-  }
-
-  // Decay synapses
-  for (let i = 0; i < net.synapses.length; i++) {
-    const syn = net.synapses[i];
-    const synParams = net.sParams[i];
-    syn.s -= (syn.s / synParams.tauSyn) * net.dtMs;
-  }
-
-  // STDP Learning (sign-conserving)
-  if (net.stdp.enabled) {
-    for (const spike of result.spikes) {
-      const [neuronId, time] = spike;
-      
-      // Update fan-out synapses (pre-before-post LTP)
-      for (const synIdx of net.fanOut[neuronId] || []) {
-        const syn = net.synapses[synIdx];
-        const synParams = net.sParams[synIdx];
-        const dTpos = syn.lastPostMs - time;
-        
-        if (dTpos > 0) {
-          const dw = net.stdp.Apos * Math.exp(-dTpos / net.stdp.tauPos);
-          const newW = synParams.w + dw;
-          synParams.w = clamp(signConserve(newW, synParams.inhibitory), net.stdp.wMin, net.stdp.wMax);
-        }
-        syn.lastPreMs = time;
-      }
-      
-      // Update fan-in synapses (post-before-pre LTD)
-      for (const synIdx of net.fanIn[neuronId] || []) {
-        const syn = net.synapses[synIdx];
-        const synParams = net.sParams[synIdx];
-        const dTneg = time - syn.lastPreMs;
-        
-        if (dTneg > 0) {
-          const dw = -net.stdp.Aneg * Math.exp(-dTneg / net.stdp.tauNeg);
-          const newW = synParams.w + dw;
-          synParams.w = clamp(signConserve(newW, synParams.inhibitory), net.stdp.wMin, net.stdp.wMax);
-        }
-        syn.lastPostMs = time;
-      }
-    }
-  }
-
-  // Intrinsic Plasticity (homeostatic threshold adjustment)
-  if (net.intr.enabled && net.tMs % net.intr.windowMs === 0) {
-    for (let i = 2; i < net.neurons.length; i++) { // Skip input neurons
-      if (net.spikeHistory && net.spikeHistory[i]) {
-        const spikesInWindow = net.spikeHistory[i].filter(t => t > net.tMs - net.intr.windowMs);
-        const rate = spikesInWindow.length / (net.intr.windowMs / 1000);
-        const dVth = net.intr.eta * (rate - net.intr.targetHz);
-        net.nParams[i].Vth = clamp(net.nParams[i].Vth + dVth, -55, -45);
-      }
-    }
-  }
-
-  // Track spikes for intrinsic plasticity
-  for (const spike of result.spikes) {
-    const [neuronId, time] = spike;
-    if (net.spikeHistory && net.spikeHistory[neuronId]) {
-      net.spikeHistory[neuronId].push(time);
-      // Keep only recent spikes
-      net.spikeHistory[neuronId] = net.spikeHistory[neuronId].filter(t => t > net.tMs - 1000);
-    }
-  }
-
-  net.tMs += net.dtMs;
-  return result;
-}
-
-// Individual Neuron Display Component
-function NeuronDisplay({ neuronId, neuron, params, spikes, isSpiking, className = '' }) {
+// Fixed Network Component
+function FixedNetwork({ currentMode, onModeChange, analyzeMode, analyzeSynapses, exitAnalyze, onCaptureEdgeStrengths, capturedEdgeStrengths, goldenFlash, synapticDegradation, resilientSynapses, isAlzheimerSimulation, alzheimerTrainingStartTime, calculateAlzheimerDegradationEffect, alzheimerSpikes }) {
   const canvasRef = useRef(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+  const [particles, setParticles] = useState([]);
+  const [edgeStrengths, setEdgeStrengths] = useState(new Map());
+  const [elapsedTime, setElapsedTime] = useState({ A: 0, B: 0 });
+  const [outputGateOpen, setOutputGateOpen] = useState(true);
+  const [reacquireCountdown, setReacquireCountdown] = useState(0);
+  const [outputFlash, setOutputFlash] = useState({ active: false, startTime: 0 });
+  const [draggedNeuron, setDraggedNeuron] = useState(null);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [dragStartTime, setDragStartTime] = useState(null);
+  const [trainingStartTime, setTrainingStartTime] = useState(null);
+  
+  const animationRef = useRef();
+  const lastTimeRef = useRef(0);
+  const particleIdRef = useRef(0);
 
+  // Fixed neuron positions
+  const [neuronPositions, setNeuronPositions] = useState({});
+
+  // Initialize fixed positions
+  useEffect(() => {
+    if (dimensions.width > 0) {
+      const centerX = dimensions.width / 2;
+      const centerY = dimensions.height / 2;
+      const positions = {};
+
+      // Input neurons (left side) - FARTHER LEFT AND SLIGHTLY UP
+      for (let i = 0; i < NETWORK_CONFIG.INPUTS; i++) {
+        const y = centerY - 200 + (i * 60); // Moved up by 50px
+        positions[i] = { x: centerX - 350, y: y, type: 'input' }; // Moved left by 100px
+      }
+
+      // Hidden neurons (center) - MUCH MORE SPREAD OUT
+      for (let i = 0; i < NETWORK_CONFIG.HIDDEN; i++) {
+        const col = i % 5;
+        const row = Math.floor(i / 5);
+        const x = centerX - 200 + (col * 100); // Much wider spacing: 100px between columns
+        const y = centerY - 200 + (row * 100); // Much taller spacing: 100px between rows
+        positions[NETWORK_CONFIG.INPUTS + i] = { 
+          x: x, 
+          y: y, 
+          type: i % 4 === 0 ? 'inhibitory' : 'excitatory' 
+        };
+      }
+
+      // Output neuron (right side)
+      positions[NETWORK_CONFIG.INPUTS + NETWORK_CONFIG.HIDDEN] = { 
+        x: centerX + 250, 
+        y: centerY, 
+        type: 'output' 
+      };
+
+      setNeuronPositions(positions);
+    }
+  }, [dimensions.width, dimensions.height]);
+
+  // Handle canvas resize
   useEffect(() => {
     const updateDimensions = () => {
       if (canvasRef.current) {
@@ -489,185 +95,288 @@ function NeuronDisplay({ neuronId, neuron, params, spikes, isSpiking, className 
     return () => window.removeEventListener('resize', updateDimensions);
   }, []);
 
+  // IMMEDIATE particle cleanup when mode changes
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || dimensions.width === 0) return;
+    if (currentMode) {
+      const activeInputs = PATTERNS[currentMode].activeInputs;
+      setParticles(prev => prev.filter(particle => activeInputs.includes(particle.from)));
+    }
+  }, [currentMode]);
 
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+  // Capture edge strengths when analyze mode is activated
+  useEffect(() => {
+    if (analyzeMode && onCaptureEdgeStrengths) {
+      onCaptureEdgeStrengths(new Map(edgeStrengths));
+      setParticles([]); // Clear all particles
+    }
+  }, [analyzeMode, edgeStrengths, onCaptureEdgeStrengths]);
 
-    canvas.width = dimensions.width;
-    canvas.height = dimensions.height;
-    canvas.style.width = `${dimensions.width / (window.devicePixelRatio || 1)}px`;
-    canvas.style.height = `${dimensions.height / (window.devicePixelRatio || 1)}px`;
 
-    // Clear canvas
-    ctx.fillStyle = '#1a1816';
-    ctx.fillRect(0, 0, dimensions.width, dimensions.height);
-
-    const centerX = dimensions.width / 2;
-    const centerY = dimensions.height / 2;
-    const radius = Math.min(dimensions.width, dimensions.height) / 3;
-
-    // Draw neuron membrane
-    ctx.strokeStyle = isSpiking ? '#ff6b6b' : '#769656';
-    ctx.lineWidth = isSpiking ? 4 : 2;
-    ctx.beginPath();
-    ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
-    ctx.stroke();
-
-    // Draw threshold line
-    ctx.strokeStyle = '#cc8c14';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([5, 5]);
-    ctx.beginPath();
-    ctx.arc(centerX, centerY, radius * 0.8, 0, 2 * Math.PI);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    // Draw membrane potential as inner circle
-    const voltageRatio = Math.max(0, Math.min(1, (neuron.V + 80) / 20)); // Map -80 to -60 mV to 0-1
-    const innerRadius = radius * 0.6 * voltageRatio;
+  // Mode switching logic
+  const switchMode = useCallback((newMode) => {
+    if (currentMode && currentMode !== newMode) {
+      // Calculate reacquire time
+      const reacquireMs = Math.round(elapsedTime[currentMode] * 1.5);
+      setReacquireCountdown(reacquireMs);
+      setOutputGateOpen(false);
+    }
     
-    if (innerRadius > 0) {
-      ctx.fillStyle = isSpiking ? '#ff6b6b' : '#4ade80';
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, innerRadius, 0, 2 * Math.PI);
-      ctx.fill();
-    }
+    onModeChange(newMode);
+    setElapsedTime(prev => ({ ...prev, [newMode]: 0 }));
+  }, [currentMode, elapsedTime, onModeChange]);
 
-    // Draw spike animation with spark effect
-    if (isSpiking) {
-      ctx.strokeStyle = '#ff6b6b';
-      ctx.lineWidth = 3;
-      
-      // Main spike rays
-      for (let i = 0; i < 8; i++) {
-        const angle = (i * Math.PI) / 4;
-        const x1 = centerX + Math.cos(angle) * radius;
-        const y1 = centerY + Math.sin(angle) * radius;
-        const x2 = centerX + Math.cos(angle) * (radius + 20);
-        const y2 = centerY + Math.sin(angle) * (radius + 20);
-        
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
-        ctx.stroke();
-      }
-      
-      // Add spark effect with glow
-      ctx.shadowColor = '#ff6b6b';
-      ctx.shadowBlur = 15;
-      ctx.strokeStyle = '#ff6b6b';
-      ctx.lineWidth = 2;
-      
-      for (let i = 0; i < 12; i++) {
-        const angle = (i * Math.PI) / 6;
-        const x1 = centerX + Math.cos(angle) * (radius - 5);
-        const y1 = centerY + Math.sin(angle) * (radius - 5);
-        const x2 = centerX + Math.cos(angle) * (radius + 25);
-        const y2 = centerY + Math.sin(angle) * (radius + 25);
-        
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
-        ctx.stroke();
-      }
-      
-      ctx.shadowBlur = 0;
-    }
-
-    // Draw neuron label
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 14px Georgia, serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(neuronId === 0 ? 'x1' : neuronId === 1 ? 'x2' : 
-                 neuronId === 2 ? 'H_OR' : neuronId === 3 ? 'H_AND' : 'O', 
-                 centerX, centerY);
-
-    // Draw voltage value
-    ctx.fillStyle = '#b0a99f';
-    ctx.font = '10px sans-serif';
-    ctx.fillText(`${neuron.V.toFixed(1)}mV`, centerX, centerY + 25);
-
-  }, [neuron, isSpiking, dimensions]);
-
-  return (
-    <div className={`relative ${className}`}>
-      <canvas
-        ref={canvasRef}
-        className="w-full h-full"
-        style={{ background: '#1a1816' }}
-      />
-    </div>
-  );
-}
-
-// Network Graph Component with Animated Connections
-function NetworkGraph({ network, spikes, className = '' }) {
-  const canvasRef = useRef(null);
-  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
-  const [signalParticles, setSignalParticles] = useState([]);
-
+  // Update elapsed time
   useEffect(() => {
-    const updateDimensions = () => {
-      if (canvasRef.current) {
-        const rect = canvasRef.current.getBoundingClientRect();
-        const dpr = window.devicePixelRatio || 1;
-        setDimensions({
-          width: rect.width * dpr,
-          height: rect.height * dpr
+    if (currentMode) {
+      const interval = setInterval(() => {
+        setElapsedTime(prev => ({
+          ...prev,
+          [currentMode]: prev[currentMode] + 16 // ~60fps
+        }));
+      }, 16);
+      return () => clearInterval(interval);
+    }
+  }, [currentMode]);
+
+  // Update reacquire countdown
+  useEffect(() => {
+    if (reacquireCountdown > 0) {
+      const interval = setInterval(() => {
+        setReacquireCountdown(prev => {
+          if (prev <= 16) {
+            setOutputGateOpen(true);
+            return 0;
+          }
+          return prev - 16;
         });
-      }
-    };
+      }, 16);
+      return () => clearInterval(interval);
+    }
+  }, [reacquireCountdown]);
 
-    updateDimensions();
-    window.addEventListener('resize', updateDimensions);
-    return () => window.removeEventListener('resize', updateDimensions);
-  }, []);
-
-  // Update signal particles when spikes occur
+  // Particle generation - STRICT MODE ENFORCEMENT (disabled in analyze mode)
   useEffect(() => {
-    const recentSpikes = spikes.filter(([neuronId, time]) => time > network.tMs - 100);
-    recentSpikes.forEach(([neuronId, time]) => {
-      // Find outgoing connections from this neuron
-      const outgoingSynapses = network.fanOut[neuronId] || [];
-      outgoingSynapses.forEach(synIdx => {
-        const synParams = network.sParams[synIdx];
-        const delay = Math.max(100, synParams.delayMs); // Ensure minimum delay for visibility
-        
-        setSignalParticles(prev => [...prev, {
-          id: Date.now() + Math.random(),
-          from: neuronId,
-          to: synParams.post,
-          startTime: time,
-          delay: delay,
-          progress: 0,
-          color: synParams.inhibitory ? '#ff6b6b' : '#4ade80',
-          strength: Math.abs(synParams.w) // Signal strength based on weight
-        }]);
-      });
-    });
-  }, [spikes, network]);
+    if (!currentMode || Object.keys(neuronPositions).length === 0 || analyzeMode) return;
 
-  // Update particle positions (faster updates for smoother animation)
-  useEffect(() => {
+    // Set training start time when pattern begins
+    setTrainingStartTime(Date.now());
+
     const interval = setInterval(() => {
-      setSignalParticles(prev => 
-        prev.map(particle => ({
-          ...particle,
-          progress: Math.min(1, (network.tMs - particle.startTime) / particle.delay)
-        })).filter(particle => particle.progress < 1)
-      );
-    }, 30); // Faster updates for smoother animation
+      const activeInputs = PATTERNS[currentMode].activeInputs;
+      
+      setParticles(prev => {
+        // FIRST: Remove ALL particles from inactive inputs immediately
+        const filteredParticles = prev.filter(particle => {
+          const isFromActiveInput = activeInputs.includes(particle.from);
+          return isFromActiveInput; // Keep only particles from active inputs
+        });
+        
+        const newParticles = [...filteredParticles];
+        
+        // THEN: Generate particles ONLY for active inputs
+        activeInputs.forEach(inputId => {
+          if (Math.random() < 0.3) { // 30% chance per frame
+            // Find all hidden neurons this input connects to
+            for (let hiddenId = NETWORK_CONFIG.INPUTS; hiddenId < NETWORK_CONFIG.INPUTS + NETWORK_CONFIG.HIDDEN; hiddenId++) {
+              if (newParticles.length < NETWORK_CONFIG.MAX_PARTICLES) {
+                newParticles.push({
+                  id: particleIdRef.current++,
+                  from: inputId,
+                  to: hiddenId,
+                  progress: 0,
+                  speed: 0.02 + Math.random() * 0.01,
+                  color: '#4ade80',
+                  startTime: Date.now()
+                });
+              }
+            }
+          }
+        });
+
+        // ALSO: Generate some random particles from hidden to output to show synapse activity
+        if (Math.random() < 0.1) { // 10% chance per frame
+          const randomHiddenId = NETWORK_CONFIG.INPUTS + Math.floor(Math.random() * NETWORK_CONFIG.HIDDEN);
+          if (newParticles.length < NETWORK_CONFIG.MAX_PARTICLES) {
+            newParticles.push({
+              id: particleIdRef.current++,
+              from: randomHiddenId,
+              to: NETWORK_CONFIG.INPUTS + NETWORK_CONFIG.HIDDEN,
+              progress: 0,
+              speed: 0.025,
+              color: '#4ade80',
+              startTime: Date.now()
+    });
+    }
+  }
+  
+        return newParticles;
+      });
+    }, 50); // 20 FPS particle generation
 
     return () => clearInterval(interval);
-  }, [network.tMs]);
+  }, [currentMode, neuronPositions]);
 
+  // Update particles and edge strengths (DISABLED in analyze mode)
+  useEffect(() => {
+    if (analyzeMode) return; // Don't update edge strengths in analyze mode
+    
+    const interval = setInterval(() => {
+      setParticles(prev => {
+        const updated = prev.map(particle => ({
+          ...particle,
+          progress: Math.min(1, particle.progress + particle.speed)
+        })).filter(particle => particle.progress < 1);
+
+        // Update edge strengths based on particle activity with gradual 13-second buildup
+        setEdgeStrengths(prev => {
+          const newStrengths = new Map(prev);
+          
+          // Calculate training progress (0 to 1 over 13 seconds)
+          const trainingProgress = trainingStartTime ? 
+            Math.min(1, (Date.now() - trainingStartTime) / (13 * 1000)) : 0;
+          
+          // Calculate activity for each edge
+          const edgeActivity = new Map();
+        updated.forEach(particle => {
+            const edgeKey = `${particle.from}-${particle.to}`;
+            edgeActivity.set(edgeKey, (edgeActivity.get(edgeKey) || 0) + 1);
+          });
+
+          // Update strengths with gradual buildup
+          edgeActivity.forEach((activity, edgeKey) => {
+            const currentStrength = newStrengths.get(edgeKey) || 0;
+            // Scale the strength increase by training progress
+            const strengthIncrease = activity * 0.01 * trainingProgress;
+            const newStrength = Math.min(1, currentStrength + strengthIncrease);
+            newStrengths.set(edgeKey, newStrength);
+          });
+
+          // Decay inactive edges (much slower decay for old pattern lines)
+          newStrengths.forEach((strength, edgeKey) => {
+            if (!edgeActivity.has(edgeKey)) {
+              // Much slower decay rate for old pattern lines
+              const decayed = Math.max(0, strength - 0.001);
+              newStrengths.set(edgeKey, decayed);
+            }
+          });
+
+          return newStrengths;
+        });
+
+        // Check for particles reaching hidden neurons - FORCE OUTPUT PARTICLE SPAWNING
+        const particlesToRemove = [];
+        const newOutputParticles = [];
+        
+        updated.forEach((particle, index) => {
+          if (particle.progress >= 1 && particle.to >= NETWORK_CONFIG.INPUTS && particle.to < NETWORK_CONFIG.INPUTS + NETWORK_CONFIG.HIDDEN) {
+            // Mark this particle for removal
+            particlesToRemove.push(index);
+            
+            // FORCE spawn particle to output immediately
+            if (updated.length + newOutputParticles.length < NETWORK_CONFIG.MAX_PARTICLES) {
+              newOutputParticles.push({
+                id: particleIdRef.current++,
+                from: particle.to,
+                to: NETWORK_CONFIG.INPUTS + NETWORK_CONFIG.HIDDEN,
+                progress: 0,
+                speed: 0.03,
+                color: particle.color,
+                startTime: Date.now()
+              });
+            }
+
+            // Check if output should spike
+            if (outputGateOpen) {
+              const totalStrength = Array.from(edgeStrengths.values()).reduce((sum, strength) => sum + strength, 0);
+              if (totalStrength > 0.5) {
+                  setOutputFlash({ active: true, startTime: Date.now() });
+              }
+            }
+          }
+        });
+
+        // Remove particles that reached hidden neurons
+        const filteredParticles = updated.filter((_, index) => !particlesToRemove.includes(index));
+        
+        // Add new output particles
+        return [...filteredParticles, ...newOutputParticles];
+      });
+    }, 16); // 60 FPS
+
+    return () => clearInterval(interval);
+  }, [edgeStrengths, outputGateOpen, analyzeMode]);
+
+  // Handle output flash
+  useEffect(() => {
+    if (outputFlash.active) {
+      const timer = setTimeout(() => {
+        setOutputFlash({ active: false, startTime: 0 });
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [outputFlash.active]);
+
+  // Mouse event handlers for dragging
+  const handleMouseDown = useCallback((e, neuronId) => {
+    if (analyzeMode) return; // Don't allow dragging in analyze mode
+    
+    const rect = canvasRef.current.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const mouseX = (e.clientX - rect.left) * dpr;
+    const mouseY = (e.clientY - rect.top) * dpr;
+    
+    const neuronPos = neuronPositions[neuronId];
+    if (neuronPos) {
+      setDraggedNeuron(neuronId);
+      setDragStartTime(Date.now());
+      setDragOffset({
+        x: mouseX - neuronPos.x,
+        y: mouseY - neuronPos.y
+      });
+    }
+  }, [neuronPositions, analyzeMode]);
+
+  const handleMouseMove = useCallback((e) => {
+    if (!draggedNeuron) return;
+    
+    const rect = canvasRef.current.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const mouseX = (e.clientX - rect.left) * dpr;
+    const mouseY = (e.clientY - rect.top) * dpr;
+    
+    setNeuronPositions(prev => ({
+      ...prev,
+      [draggedNeuron]: {
+        ...prev[draggedNeuron],
+        x: mouseX - dragOffset.x,
+        y: mouseY - dragOffset.y
+      }
+    }));
+  }, [draggedNeuron, dragOffset]);
+
+  const handleMouseUp = useCallback(() => {
+    setDraggedNeuron(null);
+    setDragStartTime(null);
+    setDragOffset({ x: 0, y: 0 });
+  }, []);
+
+  // Add global mouse event listeners
+  useEffect(() => {
+    if (draggedNeuron) {
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+    }
+  }, [draggedNeuron, handleMouseMove, handleMouseUp]);
+
+  // Render canvas
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || dimensions.width === 0) return;
+    if (!canvas || dimensions.width === 0 || Object.keys(neuronPositions).length === 0) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -681,65 +390,89 @@ function NetworkGraph({ network, spikes, className = '' }) {
     ctx.fillStyle = '#1a1816';
     ctx.fillRect(0, 0, dimensions.width, dimensions.height);
 
-    // Define neuron positions dynamically based on network size
-    const centerX = dimensions.width / 2;
-    const centerY = dimensions.height / 2;
-    
-    // Auto-layout neurons by type
-    const neuronPositions = [];
-    const inputs = [];
-    const hidden = [];
-    const outputs = [];
-    
-    // Categorize neurons by type
-    network.meta.forEach((neuron, index) => {
-      if (neuron.type === NeuronType.INPUT) {
-        inputs.push(index);
-      } else if (neuron.type === NeuronType.OUTPUT) {
-        outputs.push(index);
-      } else {
-        hidden.push(index);
-      }
-    });
-    
-    // Position inputs (left side)
-    inputs.forEach((neuronId, i) => {
-      const y = centerY - 100 + (i * 200);
-      neuronPositions[neuronId] = { x: centerX - 300, y: y };
-    });
-    
-    // Position hidden neurons (middle, stacked)
-    hidden.forEach((neuronId, i) => {
-      const cols = Math.ceil(Math.sqrt(hidden.length));
-      const row = Math.floor(i / cols);
-      const col = i % cols;
-      const x = centerX - 100 + (col * 100);
-      const y = centerY - 100 + (row * 100);
-      neuronPositions[neuronId] = { x, y };
-    });
-    
-    // Position outputs (right side)
-    outputs.forEach((neuronId, i) => {
-      const y = centerY;
-      neuronPositions[neuronId] = { x: centerX + 300, y: y };
-    });
+    // Draw connections
+    Object.keys(neuronPositions).forEach(fromId => {
+      const fromPos = neuronPositions[fromId];
+      if (!fromPos) return;
 
-    // Draw connections first (behind neurons)
-    network.sParams.forEach((synParams, index) => {
-      const fromPos = neuronPositions[synParams.pre];
-      const toPos = neuronPositions[synParams.post];
-      
-      if (!fromPos || !toPos) return;
+      Object.keys(neuronPositions).forEach(toId => {
+        const toPos = neuronPositions[toId];
+        if (!toPos || fromId === toId) return;
 
-      // Connection color and style
-      const weight = Math.abs(synParams.w);
-      const alpha = Math.min(1, weight / 2);
-      const color = synParams.inhibitory ? 
-        `rgba(255, 107, 107, ${alpha})` : 
-        `rgba(74, 222, 128, ${alpha})`;
-      
-      ctx.strokeStyle = color;
-      ctx.lineWidth = Math.max(1, weight * 3);
+        // Only draw input->hidden and hidden->output connections
+        const fromNum = parseInt(fromId);
+        const toNum = parseInt(toId);
+        const isInputToHidden = fromNum < NETWORK_CONFIG.INPUTS && toNum >= NETWORK_CONFIG.INPUTS && toNum < NETWORK_CONFIG.INPUTS + NETWORK_CONFIG.HIDDEN;
+        const isHiddenToOutput = fromNum >= NETWORK_CONFIG.INPUTS && fromNum < NETWORK_CONFIG.INPUTS + NETWORK_CONFIG.HIDDEN && toNum === NETWORK_CONFIG.INPUTS + NETWORK_CONFIG.HIDDEN;
+
+        if (isInputToHidden || isHiddenToOutput) {
+          const edgeKey = `${fromId}-${toId}`;
+          const strength = analyzeMode ? 
+            (capturedEdgeStrengths.get(edgeKey) || 0) : 
+            (edgeStrengths.get(edgeKey) || 0);
+          
+          // Determine if this edge is active in current mode
+          const isActive = currentMode && (
+            (currentMode === 'A' && fromNum < NETWORK_CONFIG.INPUTS && PATTERNS.A.activeInputs.includes(fromNum)) ||
+            (currentMode === 'B' && fromNum < NETWORK_CONFIG.INPUTS && PATTERNS.B.activeInputs.includes(fromNum))
+          );
+
+          // Apply degradation effects for Alzheimer's simulation
+          let finalStrength = strength;
+          let finalAlpha = Math.max(0.1, strength);
+          let finalThickness = Math.max(0.5, 1 + strength * 4);
+          let finalColor = fromPos.type === 'inhibitory' ? '#ff6b6b' : '#4ade80';
+          let shouldGlow = isActive && strength > 0.3;
+
+          if (isAlzheimerSimulation && synapticDegradation) {
+            const degradation = synapticDegradation.get(edgeKey) || 0;
+            const isResilient = resilientSynapses && resilientSynapses.has(edgeKey);
+            
+            if (isResilient) {
+              // Persistent synapses: bright, stable, glowing
+              finalStrength = strength * 1.2; // Stronger than normal
+              finalAlpha = Math.min(1.0, finalAlpha * 1.5); // Brighter
+              finalThickness = Math.max(3.0, finalThickness * 1.8); // Thicker
+              finalColor = '#00ff88'; // Bright green for persistent synapses
+              shouldGlow = true; // Always glow brightly
+            } else {
+              // Normal synapses: apply degradation effects
+              finalStrength = strength * (1 - degradation * 0.8);
+              finalAlpha = Math.max(0.05, finalAlpha * (1 - degradation * 0.9));
+              finalThickness = Math.max(0.2, finalThickness * (1 - degradation * 0.7));
+              
+              // Add flickering effect based on degradation
+              const flickerIntensity = degradation * 0.5;
+              const flicker = Math.random() < flickerIntensity;
+              if (flicker) {
+                finalAlpha *= 0.3; // Flicker to very low opacity
+              }
+              
+              // Change color based on degradation level
+              if (degradation > 0.7) {
+                finalColor = '#ff4444'; // Red for highly degraded
+              } else if (degradation > 0.4) {
+                finalColor = '#ff8844'; // Orange for moderately degraded
+              }
+              
+              // Reduce glow for degraded connections
+              if (degradation > 0.5) {
+                shouldGlow = false;
+              }
+            }
+          }
+
+          ctx.strokeStyle = `${finalColor}${Math.floor(finalAlpha * 255).toString(16).padStart(2, '0')}`;
+          ctx.lineWidth = finalThickness;
+
+          // Add glow effect for active edges
+          if (shouldGlow) {
+            ctx.shadowColor = finalColor;
+            ctx.shadowBlur = 10;
+            } else {
+            ctx.shadowBlur = 0;
+          }
+
       ctx.beginPath();
       ctx.moveTo(fromPos.x, fromPos.y);
       ctx.lineTo(toPos.x, toPos.y);
@@ -747,7 +480,7 @@ function NetworkGraph({ network, spikes, className = '' }) {
 
       // Draw arrowhead
       const angle = Math.atan2(toPos.y - fromPos.y, toPos.x - fromPos.x);
-      const arrowLength = 15;
+          const arrowLength = 12;
       const arrowAngle = Math.PI / 6;
       
       ctx.beginPath();
@@ -762,560 +495,654 @@ function NetworkGraph({ network, spikes, className = '' }) {
         toPos.y - arrowLength * Math.sin(angle + arrowAngle)
       );
       ctx.stroke();
+
+          ctx.shadowBlur = 0;
+        }
+      });
     });
 
-      // Draw signal particles with enhanced visualization
-      signalParticles.forEach(particle => {
-        const fromPos = neuronPositions[particle.from];
-        const toPos = neuronPositions[particle.to];
-        
+    // Draw particles
+    particles.forEach(particle => {
+      const fromPos = neuronPositions[particle.from];
+      const toPos = neuronPositions[particle.to];
         if (!fromPos || !toPos) return;
 
         const x = fromPos.x + (toPos.x - fromPos.x) * particle.progress;
         const y = fromPos.y + (toPos.y - fromPos.y) * particle.progress;
 
-        // Signal strength affects particle size
-        const baseSize = 6;
-        const strengthSize = (particle.strength || 0.1) * 20;
-        const particleSize = baseSize + strengthSize;
-
-        // Draw signal particle with strength-based size
         ctx.fillStyle = particle.color;
+      ctx.shadowColor = particle.color;
+      ctx.shadowBlur = 8;
         ctx.beginPath();
-        ctx.arc(x, y, particleSize, 0, 2 * Math.PI);
-        ctx.fill();
-
-        // Add glow effect based on signal strength
-        ctx.shadowColor = particle.color;
-        ctx.shadowBlur = 10 + strengthSize * 2;
-        ctx.beginPath();
-        ctx.arc(x, y, particleSize * 0.6, 0, 2 * Math.PI);
+      ctx.arc(x, y, 4, 0, 2 * Math.PI);
         ctx.fill();
         ctx.shadowBlur = 0;
-
-        // Add pulsing effect
-        const pulseSize = particleSize + 3 * Math.sin(Date.now() * 0.01);
-        ctx.fillStyle = particle.color;
-        ctx.globalAlpha = 0.4;
-        ctx.beginPath();
-        ctx.arc(x, y, pulseSize, 0, 2 * Math.PI);
-        ctx.fill();
-        ctx.globalAlpha = 1.0;
-
-        // Add spark effect when signal arrives at target neuron
-        if (particle.progress > 0.9) {
-          const sparkSize = 15 + strengthSize * 10;
-          const sparkAlpha = (1 - particle.progress) * 2; // Fade out as it arrives
-          
-          ctx.strokeStyle = particle.color;
-          ctx.lineWidth = 3;
-          ctx.globalAlpha = sparkAlpha;
-          
-          // Draw spark rays
-          for (let i = 0; i < 8; i++) {
-            const angle = (i * Math.PI) / 4;
-            const x1 = toPos.x + Math.cos(angle) * 20;
-            const y1 = toPos.y + Math.sin(angle) * 20;
-            const x2 = toPos.x + Math.cos(angle) * sparkSize;
-            const y2 = toPos.y + Math.sin(angle) * sparkSize;
-            
-            ctx.beginPath();
-            ctx.moveTo(x1, y1);
-            ctx.lineTo(x2, y2);
-            ctx.stroke();
-          }
-          
-          ctx.globalAlpha = 1.0;
-        }
       });
 
     // Draw neurons
-    network.neurons.forEach((neuron, index) => {
-      const pos = neuronPositions[index];
+    Object.keys(neuronPositions).forEach((neuronId, index) => {
+      const pos = neuronPositions[neuronId];
       if (!pos) return;
 
-      const isSpiking = spikes.some(([neuronId, time]) => 
-        neuronId === index && time > network.tMs - 100
-      );
+      const isOutput = pos.type === 'output';
+      const shouldFlash = isOutput && outputFlash.active;
 
-      // Neuron membrane (larger for better visibility)
-      ctx.strokeStyle = isSpiking ? '#ff6b6b' : '#769656';
-      ctx.lineWidth = isSpiking ? 6 : 3;
-      ctx.beginPath();
-      ctx.arc(pos.x, pos.y, 40, 0, 2 * Math.PI);
-      ctx.stroke();
-
-      // Membrane potential visualization
-      const voltageRatio = Math.max(0, Math.min(1, (neuron.V + 80) / 20));
-      const innerRadius = 25 * voltageRatio;
-      
-      if (innerRadius > 0) {
-        ctx.fillStyle = isSpiking ? '#ff6b6b' : '#4ade80';
+      // Output flash effect
+      if (shouldFlash) {
+        const flashAge = Date.now() - outputFlash.startTime;
+        const flashProgress = Math.min(1, flashAge / 500);
+        const flashIntensity = 1 - flashProgress;
+        
+        ctx.fillStyle = `rgba(255, 255, 0, ${flashIntensity * 0.8})`;
         ctx.beginPath();
-        ctx.arc(pos.x, pos.y, innerRadius, 0, 2 * Math.PI);
+        ctx.arc(pos.x, pos.y, 60 + flashProgress * 30, 0, 2 * Math.PI);
         ctx.fill();
+        
+        ctx.strokeStyle = `rgba(255, 255, 0, ${flashIntensity * 0.6})`;
+        ctx.lineWidth = 6;
+        ctx.shadowColor = '#ffff00';
+        ctx.shadowBlur = 15;
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, 45 + flashProgress * 15, 0, 2 * Math.PI);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
       }
 
-      // Spike animation with enhanced spark effect
-      if (isSpiking) {
-        ctx.strokeStyle = '#ff6b6b';
-        ctx.lineWidth = 4;
+      // Golden flash effect (steady pulsing during training)
+      if (isOutput && goldenFlash.active) {
+        const flashAge = Date.now() - goldenFlash.startTime;
+        const pulsePhase = (flashAge % 1000) / 1000; // 1 second pulse cycle
+        const pulseIntensity = (Math.sin(pulsePhase * 2 * Math.PI) + 1) / 2; // 0 to 1
         
-        // Main spike rays
-        for (let i = 0; i < 12; i++) {
-          const angle = (i * Math.PI) / 6;
-          const x1 = pos.x + Math.cos(angle) * 40;
-          const y1 = pos.y + Math.sin(angle) * 40;
-          const x2 = pos.x + Math.cos(angle) * 60;
-          const y2 = pos.y + Math.sin(angle) * 60;
+        ctx.fillStyle = `rgba(255, 215, 0, ${pulseIntensity * 0.6})`;
+      ctx.beginPath();
+        ctx.arc(pos.x, pos.y, 50 + pulseIntensity * 20, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        ctx.strokeStyle = `rgba(255, 215, 0, ${pulseIntensity * 0.8})`;
+        ctx.lineWidth = 4;
+        ctx.shadowColor = '#ffd700';
+        ctx.shadowBlur = 20;
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, 35 + pulseIntensity * 15, 0, 2 * Math.PI);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
+
+      // Alzheimer's golden hue effect - only when output neuron actually fires
+      if (isOutput && isAlzheimerSimulation && currentMode) {
+        const currentTime = Date.now();
+        const simulationTime = (currentTime - (alzheimerTrainingStartTime || currentTime)) / 1000;
+        
+        // Check if output neuron has fired recently (within last 0.5 seconds)
+        const recentSpikes = alzheimerSpikes['Out'] || [];
+        const hasRecentSpike = recentSpikes.some(spikeTime => 
+          Math.abs(simulationTime - spikeTime) < 0.5
+        );
+        
+        // Only show golden hue if there's a recent spike
+        if (hasRecentSpike) {
+          // Calculate degradation effect for intensity
+          const outputDegradation = calculateAlzheimerDegradationEffect ? calculateAlzheimerDegradationEffect('Out') : 0;
           
+          // Create golden flash effect that fades out over 0.5 seconds
+          const timeSinceLastSpike = Math.min(...recentSpikes.map(spikeTime => 
+            Math.abs(simulationTime - spikeTime)
+          ));
+          const fadeProgress = Math.min(1, timeSinceLastSpike / 0.5); // Fade over 0.5 seconds
+          const fadeIntensity = 1 - fadeProgress;
+          
+          // Base intensity affected by degradation
+          const baseIntensity = fadeIntensity * (1 - outputDegradation * 0.3);
+          const pulseRadius = 50 + fadeIntensity * 30;
+          const pulseOpacity = baseIntensity * 0.8;
+          
+          // Apply the golden flash effect
+          if (baseIntensity > 0.1) {
+            // Outer glow ring
+            ctx.fillStyle = `rgba(255, 215, 0, ${pulseOpacity * 0.4})`;
+            ctx.shadowColor = '#ffd700';
+            ctx.shadowBlur = 25;
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y, pulseRadius, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            // Inner pulse ring
+            ctx.strokeStyle = `rgba(255, 215, 0, ${pulseOpacity * 0.8})`;
+            ctx.lineWidth = 3 + baseIntensity * 3;
+            ctx.shadowColor = '#ffd700';
+            ctx.shadowBlur = 15;
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y, pulseRadius * 0.7, 0, 2 * Math.PI);
+            ctx.stroke();
+            
+            // Core pulse
+            ctx.fillStyle = `rgba(255, 215, 0, ${pulseOpacity * 0.6})`;
+            ctx.shadowColor = '#ffd700';
+            ctx.shadowBlur = 10;
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y, pulseRadius * 0.4, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            ctx.shadowBlur = 0;
+          }
+        }
+      }
+
+      // Bubbly drag effect
+      if (draggedNeuron === neuronId && dragStartTime) {
+        const dragAge = Date.now() - dragStartTime;
+        const bubblePhase = (dragAge % 2000) / 2000; // 2 second cycle
+        const bubbleIntensity = (Math.sin(bubblePhase * 2 * Math.PI) + 1) / 2; // 0 to 1
+        
+        // Create multiple bubble rings
+        for (let i = 0; i < 3; i++) {
+          const ringRadius = 40 + (i * 15) + (bubbleIntensity * 20);
+          const ringOpacity = (1 - i * 0.3) * bubbleIntensity * 0.6;
+          const ringColor = pos.type === 'inhibitory' ? '#ff6b6b' : '#769656';
+          
+          ctx.strokeStyle = `rgba(${pos.type === 'inhibitory' ? '255, 107, 107' : '118, 150, 86'}, ${ringOpacity})`;
+          ctx.lineWidth = 2 + bubbleIntensity * 2;
+          ctx.shadowColor = ringColor;
+          ctx.shadowBlur = 10 + bubbleIntensity * 10;
           ctx.beginPath();
-          ctx.moveTo(x1, y1);
-          ctx.lineTo(x2, y2);
+          ctx.arc(pos.x, pos.y, ringRadius, 0, 2 * Math.PI);
           ctx.stroke();
         }
         
-        // Add spark effect with glow
-        ctx.shadowColor = '#ff6b6b';
-        ctx.shadowBlur = 20;
-        ctx.strokeStyle = '#ff6b6b';
-        ctx.lineWidth = 2;
-        
-        for (let i = 0; i < 16; i++) {
-          const angle = (i * Math.PI) / 8;
-          const x1 = pos.x + Math.cos(angle) * 30;
-          const y1 = pos.y + Math.sin(angle) * 30;
-          const x2 = pos.x + Math.cos(angle) * 70;
-          const y2 = pos.y + Math.sin(angle) * 70;
+        // Add floating particles around the neuron
+        for (let i = 0; i < 8; i++) {
+          const particleAngle = (i / 8) * 2 * Math.PI + (bubblePhase * 2 * Math.PI);
+          const particleRadius = 60 + bubbleIntensity * 30;
+          const particleX = pos.x + Math.cos(particleAngle) * particleRadius;
+          const particleY = pos.y + Math.sin(particleAngle) * particleRadius;
+          const particleSize = 2 + bubbleIntensity * 3;
           
+          ctx.fillStyle = `rgba(${pos.type === 'inhibitory' ? '255, 107, 107' : '118, 150, 86'}, ${bubbleIntensity * 0.8})`;
+          ctx.shadowColor = pos.type === 'inhibitory' ? '#ff6b6b' : '#769656';
+          ctx.shadowBlur = 5;
           ctx.beginPath();
-          ctx.moveTo(x1, y1);
-          ctx.lineTo(x2, y2);
-          ctx.stroke();
+          ctx.arc(particleX, particleY, particleSize, 0, 2 * Math.PI);
+          ctx.fill();
         }
         
         ctx.shadowBlur = 0;
       }
 
-      // Neuron label (larger and more visible)
+      // Neuron circle
+      ctx.strokeStyle = pos.type === 'inhibitory' ? '#ff6b6b' : '#769656';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, 25, 0, 2 * Math.PI);
+      ctx.stroke();
+
+      // Neuron label
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 16px Georgia, serif';
+      ctx.font = 'bold 12px Georgia, serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      const label = network.meta[index]?.name || `N${index}`;
+      const label = pos.type === 'input' ? `I${parseInt(neuronId) + 1}` : 
+                   pos.type === 'output' ? 'Out' : 
+                   `H${parseInt(neuronId) - NETWORK_CONFIG.INPUTS + 1}`;
       ctx.fillText(label, pos.x, pos.y);
-
-      // Voltage display (larger and positioned better)
-      ctx.fillStyle = '#b0a99f';
-      ctx.font = 'bold 12px sans-serif';
-      ctx.fillText(`${neuron.V.toFixed(1)}mV`, pos.x, pos.y + 55);
     });
 
-  }, [network, spikes, signalParticles, dimensions, network.meta.length]);
+  }, [dimensions, neuronPositions, particles, edgeStrengths, currentMode, outputFlash, goldenFlash, draggedNeuron, dragStartTime, trainingStartTime]);
 
   return (
-    <div className={`relative ${className}`} style={{ width: '100%', height: '100%' }}>
+    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <canvas
         ref={canvasRef}
         style={{ 
           background: '#1a1816', 
           width: '100%', 
           height: '100%',
-          display: 'block'
+          display: 'block',
+          cursor: draggedNeuron ? 'grabbing' : 'grab'
+        }}
+        onMouseDown={(e) => {
+          // Find which neuron was clicked
+          const rect = canvasRef.current.getBoundingClientRect();
+          const dpr = window.devicePixelRatio || 1;
+          const mouseX = (e.clientX - rect.left) * dpr;
+          const mouseY = (e.clientY - rect.top) * dpr;
+          
+          // Check each neuron to see if mouse is within its radius
+          for (const [neuronId, pos] of Object.entries(neuronPositions)) {
+            const distance = Math.sqrt((mouseX - pos.x) ** 2 + (mouseY - pos.y) ** 2);
+            if (distance <= 30) { // Within neuron radius
+              handleMouseDown(e, neuronId);
+              break;
+            }
+          }
         }}
       />
     </div>
   );
 }
 
-// Membrane Trace Component
-function MembraneTrace({ neuronId, voltage, timeWindow = 2000, className = '' }) {
-  const canvasRef = useRef(null);
-  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
-  const [traceData, setTraceData] = useState([]);
-
-  useEffect(() => {
-    const updateDimensions = () => {
-      if (canvasRef.current) {
-        const rect = canvasRef.current.getBoundingClientRect();
-        const dpr = window.devicePixelRatio || 1;
-        setDimensions({
-          width: rect.width * dpr,
-          height: rect.height * dpr
-        });
-      }
-    };
-
-    updateDimensions();
-    window.addEventListener('resize', updateDimensions);
-    return () => window.removeEventListener('resize', updateDimensions);
-  }, []);
-
-  useEffect(() => {
-    setTraceData(prev => {
-      const newData = [...prev, { voltage, time: Date.now() }];
-      return newData.slice(-200); // Keep last 200 points
-    });
-  }, [voltage]);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || dimensions.width === 0) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    canvas.width = dimensions.width;
-    canvas.height = dimensions.height;
-    canvas.style.width = `${dimensions.width / (window.devicePixelRatio || 1)}px`;
-    canvas.style.height = `${dimensions.height / (window.devicePixelRatio || 1)}px`;
-
-    ctx.fillStyle = '#1a1816';
-    ctx.fillRect(0, 0, dimensions.width, dimensions.height);
-
-    if (traceData.length < 2) return;
-
-    const padding = 20;
-    const plotWidth = dimensions.width - 2 * padding;
-    const plotHeight = dimensions.height - 2 * padding;
-
-    // Voltage range
-    const vMin = -80;
-    const vMax = -40;
-    const vRange = vMax - vMin;
-
-    // Draw grid
-    ctx.strokeStyle = '#334155';
-    ctx.lineWidth = 1;
-    for (let i = 0; i <= 4; i++) {
-      const y = padding + (i / 4) * plotHeight;
-      ctx.beginPath();
-      ctx.moveTo(padding, y);
-      ctx.lineTo(padding + plotWidth, y);
-      ctx.stroke();
-    }
-
-    // Draw trace
-    ctx.strokeStyle = '#769656';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-
-    const currentTime = Date.now();
-    const timeStart = currentTime - timeWindow;
-
-    traceData.forEach((point, index) => {
-      if (point.time >= timeStart) {
-        const x = padding + ((point.time - timeStart) / timeWindow) * plotWidth;
-        const y = padding + ((vMax - point.voltage) / vRange) * plotHeight;
-        
-        if (index === 0) {
-          ctx.moveTo(x, y);
-        } else {
-          ctx.lineTo(x, y);
-        }
-      }
-    });
-
-    ctx.stroke();
-
-    // Draw threshold line
-    ctx.strokeStyle = '#cc8c14';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([5, 5]);
-    const thresholdY = padding + ((vMax - (-50)) / vRange) * plotHeight;
-    ctx.beginPath();
-    ctx.moveTo(padding, thresholdY);
-    ctx.lineTo(padding + plotWidth, thresholdY);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-  }, [traceData, dimensions, timeWindow]);
-
-  return (
-    <div className={`relative ${className}`}>
-      <canvas
-        ref={canvasRef}
-        className="w-full h-full"
-        style={{ background: '#1a1816' }}
-      />
-    </div>
-  );
-}
-
-// Canvas Components
-function RasterPlot({ spikes, neuronCount, timeWindow = 2000, className = '' }) {
-  const canvasRef = useRef(null);
-  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
-
-  useEffect(() => {
-    const updateDimensions = () => {
-      if (canvasRef.current) {
-        const rect = canvasRef.current.getBoundingClientRect();
-        const dpr = window.devicePixelRatio || 1;
-        setDimensions({
-          width: rect.width * dpr,
-          height: rect.height * dpr
-        });
-      }
-    };
-
-    updateDimensions();
-    window.addEventListener('resize', updateDimensions);
-    return () => window.removeEventListener('resize', updateDimensions);
-  }, []);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || dimensions.width === 0) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    canvas.width = dimensions.width;
-    canvas.height = dimensions.height;
-    canvas.style.width = `${dimensions.width / (window.devicePixelRatio || 1)}px`;
-    canvas.style.height = `${dimensions.height / (window.devicePixelRatio || 1)}px`;
-
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(0, 0, dimensions.width, dimensions.height);
-
-    if (neuronCount === 0) return;
-
-    const padding = 20;
-    const plotWidth = dimensions.width - 2 * padding;
-    const plotHeight = dimensions.height - 2 * padding;
-    const neuronHeight = plotHeight / neuronCount;
-
-    // Draw grid
-    ctx.strokeStyle = '#334155';
-    ctx.lineWidth = 1;
-    for (let i = 0; i <= neuronCount; i++) {
-      const y = padding + i * neuronHeight;
-      ctx.beginPath();
-      ctx.moveTo(padding, y);
-      ctx.lineTo(padding + plotWidth, y);
-      ctx.stroke();
-    }
-
-    // Draw spikes
-    const currentTime = Math.max(...spikes.map(([, t]) => t), 0);
-    const timeStart = currentTime - timeWindow;
-
-    ctx.fillStyle = '#10b981';
-    spikes.forEach(([neuronId, time]) => {
-      if (time >= timeStart && time <= currentTime) {
-        const x = padding + ((time - timeStart) / timeWindow) * plotWidth;
-        const y = padding + neuronId * neuronHeight + neuronHeight / 2;
-        
-        ctx.beginPath();
-        ctx.arc(x, y, 2, 0, 2 * Math.PI);
-        ctx.fill();
-      }
-    });
-
-    // Draw labels
-    ctx.fillStyle = '#e2e8f0';
-    ctx.font = '12px sans-serif';
-    ctx.textAlign = 'right';
-    for (let i = 0; i < neuronCount; i++) {
-      const y = padding + i * neuronHeight + neuronHeight / 2;
-      const label = i === 0 ? 'x1' : i === 1 ? 'x2' : 
-                   i === neuronCount - 1 ? 'O' : 
-                   i === 2 ? 'H_OR' : i === 3 ? 'H_AND' : `N${i}`;
-      ctx.fillText(label, padding - 5, y + 4);
-    }
-
-  }, [spikes, neuronCount, timeWindow, dimensions]);
-
-  return (
-    <div className={`relative ${className}`}>
-      <canvas
-        ref={canvasRef}
-        className="w-full h-full"
-        style={{ background: '#0f172a' }}
-      />
-      <div className="absolute top-2 left-2 text-sm text-slate-300">
-        Raster Plot
-      </div>
-    </div>
-  );
-}
-
+// Main Simulation Page
 export default function NeuronSimPage() {
-  const [network, setNetwork] = useState(() => initXORSTDP());
-  const [isRunning, setIsRunning] = useState(false);
-  const [speed, setSpeed] = useState(1.0);
-  const [spikesWindow, setSpikesWindow] = useState([]);
-  const [x1Rate, setX1Rate] = useState(15);
-  const [x2Rate, setX2Rate] = useState(15);
-  const [stdpEnabled, setStdpEnabled] = useState(true);
-  const [intrinsicEnabled, setIntrinsicEnabled] = useState(true);
-  const [jitterEnabled, setJitterEnabled] = useState(true);
-  const [learningMode, setLearningMode] = useState(true);
-  const [stdEnabled, setStdEnabled] = useState(true);
-  const [releaseEnabled, setReleaseEnabled] = useState(true);
-  const [lateralEnabled, setLateralEnabled] = useState(true);
-  const [showNetworkBuilder, setShowNetworkBuilder] = useState(false);
-  const [newNeuronType, setNewNeuronType] = useState(NeuronType.EXCITATORY);
-  const [newNeuronPreset, setNewNeuronPreset] = useState(RolePreset.NEUTRAL);
-  const [newNeuronName, setNewNeuronName] = useState('');
+  const [currentMode, setCurrentMode] = useState(null);
+  const [analyzeMode, setAnalyzeMode] = useState(false);
+  const [capturedEdgeStrengths, setCapturedEdgeStrengths] = useState(new Map());
+  const [trainingStartTime, setTrainingStartTime] = useState(null);
+  const [trainingElapsed, setTrainingElapsed] = useState(0);
+  const [goldenFlash, setGoldenFlash] = useState({ active: false, startTime: 0 });
+  const [flashTriggerTime, setFlashTriggerTime] = useState(null);
   
-  const animationRef = useRef();
-  const lastTimeRef = useRef(0);
+  // Membrane potential simulation state
+  const [membranePotentials, setMembranePotentials] = useState({});
+  const [timeData, setTimeData] = useState({});
+  const [neurons, setNeurons] = useState([]);
+  const [spikes, setSpikes] = useState({});
+  const [outputFiringTime, setOutputFiringTime] = useState(null);
+  const [selectedNeurons, setSelectedNeurons] = useState([]);
+  const [isReset, setIsReset] = useState(false);
+  const [pausedTrainingTime, setPausedTrainingTime] = useState(null);
+  const [pausedElapsed, setPausedElapsed] = useState(0);
 
-  const start = useCallback(() => {
-    setIsRunning(true);
-  }, []);
+  // Alzheimer's simulation independent state
+  const [alzheimerMode, setAlzheimerMode] = useState(null);
+  const [alzheimerAnalyzeMode, setAlzheimerAnalyzeMode] = useState(false);
+  const [alzheimerTrainingStartTime, setAlzheimerTrainingStartTime] = useState(null);
+  const [alzheimerTrainingElapsed, setAlzheimerTrainingElapsed] = useState(0);
+  const [alzheimerMembranePotentials, setAlzheimerMembranePotentials] = useState({});
+  const [alzheimerTimeData, setAlzheimerTimeData] = useState({});
+  const [alzheimerSpikes, setAlzheimerSpikes] = useState({});
+  const [alzheimerOutputFiringTime, setAlzheimerOutputFiringTime] = useState(null);
+  const [alzheimerGoldenFlash, setAlzheimerGoldenFlash] = useState({ active: false, startTime: 0 });
+  const [alzheimerFlashTriggerTime, setAlzheimerFlashTriggerTime] = useState(null);
+  const [showIntroModal, setShowIntroModal] = useState(true);
+  const [alzheimerCapturedEdgeStrengths, setAlzheimerCapturedEdgeStrengths] = useState(new Map());
+  const [alzheimerPausedTrainingTime, setAlzheimerPausedTrainingTime] = useState(null);
+  const [alzheimerPausedElapsed, setAlzheimerPausedElapsed] = useState(0);
 
-  const pause = useCallback(() => {
-    setIsRunning(false);
-  }, []);
-
-  const reset = useCallback(() => {
-    setIsRunning(false);
-    setNetwork(initXORSTDP());
-    setSpikesWindow([]);
-  }, []);
-
-  const toggleStdp = useCallback(() => {
-    setStdpEnabled(prev => {
-      setNetwork(net => ({ ...net, stdp: { ...net.stdp, enabled: !prev } }));
-      return !prev;
-    });
-  }, []);
-
-  const toggleIntrinsic = useCallback(() => {
-    setIntrinsicEnabled(prev => {
-      setNetwork(net => ({ ...net, intr: { ...net.intr, enabled: !prev } }));
-      return !prev;
-    });
-  }, []);
-
-  const toggleJitter = useCallback(() => {
-    setJitterEnabled(prev => {
-      setNetwork(net => ({ ...net, jitterEnabled: !prev }));
-      return !prev;
-    });
-  }, []);
-
-  const toggleLearningMode = useCallback(() => {
-    setLearningMode(prev => {
-      setNetwork(net => ({ ...net, learningMode: !prev }));
-      return !prev;
-    });
-  }, []);
-
-  const toggleStd = useCallback(() => {
-    setStdEnabled(prev => !prev);
-  }, []);
-
-  const toggleRelease = useCallback(() => {
-    setReleaseEnabled(prev => !prev);
-  }, []);
-
-  const toggleLateral = useCallback(() => {
-    setLateralEnabled(prev => !prev);
-  }, []);
-
-  const addNeuronToNetwork = useCallback(() => {
-    setNetwork(net => {
-      const newNet = { ...net };
-      addNeuron(newNet, {
-        type: newNeuronType,
-        name: newNeuronName || undefined,
-        preset: newNeuronPreset,
-        connectFromInputs: true,
-        connectToOutput: true
-      });
-      return newNet;
-    });
-    setNewNeuronName('');
-  }, [newNeuronType, newNeuronPreset, newNeuronName]);
-
-  const removeNeuronFromNetwork = useCallback((neuronId) => {
-    setNetwork(net => {
-      const newNet = { ...net };
-      removeNeuron(newNet, neuronId);
-      return newNet;
-    });
-  }, []);
-
-  const step = useCallback((n = 1) => {
-    setNetwork(prev => {
-      const newNet = { ...prev };
-      for (let i = 0; i < n; i++) {
-        const result = stepNetwork(newNet, []);
-        
-        setSpikesWindow(current => {
-          const newSpikes = [...current, ...result.spikes];
-          return newSpikes.slice(-1000);
-        });
-      }
-      return newNet;
-    });
-  }, []);
-
-  const setRates = useCallback((rates) => {
-    setNetwork(prev => ({
-      ...prev,
-      inputRatesHz: [rates.x1, rates.x2, 0, 0, 0]
-    }));
-  }, []);
-
-  const firePattern = useCallback((code) => {
-    const rates = {
-      '00': { x1: 0, x2: 0 },
-      '10': { x1: 20, x2: 0 },
-      '01': { x1: 0, x2: 20 },
-      '11': { x1: 20, x2: 20 }
-    };
-    setRates(rates[code]);
-  }, [setRates]);
-
-  // Animation loop
-  useEffect(() => {
-    if (!isRunning) {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-        animationRef.current = undefined;
-      }
-      return;
+  const handleModeChange = useCallback((mode) => {
+    setCurrentMode(mode);
+    // Reset raster plot when switching patterns
+    if (mode !== null) {
+      setIsReset(true);
+      setTimeout(() => setIsReset(false), 100);
     }
+  }, []);
 
-    const animate = (currentTime) => {
-      if (lastTimeRef.current === 0) {
-        lastTimeRef.current = currentTime;
+  // Alzheimer's simulation handlers
+  const handleAlzheimerModeChange = useCallback((mode) => {
+    setAlzheimerMode(mode);
+    // Reset raster plot when switching patterns
+    if (mode !== null) {
+      setIsReset(true);
+      setTimeout(() => setIsReset(false), 100);
+    }
+  }, []);
+
+  const alzheimerAnalyzeSynapses = useCallback(() => {
+    // Save current training state when pausing
+    setAlzheimerPausedTrainingTime(alzheimerTrainingStartTime);
+    setAlzheimerPausedElapsed(alzheimerTrainingElapsed);
+    setAlzheimerAnalyzeMode(true);
+  }, [alzheimerTrainingStartTime, alzheimerTrainingElapsed]);
+
+  const alzheimerExitAnalyze = useCallback(() => {
+    setAlzheimerAnalyzeMode(false);
+    setAlzheimerCapturedEdgeStrengths(new Map());
+    // Restore training state from when we paused
+    if (alzheimerPausedTrainingTime) {
+      setAlzheimerTrainingStartTime(alzheimerPausedTrainingTime);
+    }
+    if (alzheimerPausedElapsed > 0) {
+      setAlzheimerTrainingElapsed(alzheimerPausedElapsed);
+    }
+  }, [alzheimerPausedTrainingTime, alzheimerPausedElapsed]);
+
+  const alzheimerResetSimulation = useCallback(() => {
+    setAlzheimerMode(null);
+    setAlzheimerAnalyzeMode(false);
+    setAlzheimerCapturedEdgeStrengths(new Map());
+    setAlzheimerTrainingStartTime(null);
+    setAlzheimerTrainingElapsed(0);
+    setAlzheimerGoldenFlash({ active: false, startTime: 0 });
+    setAlzheimerFlashTriggerTime(null);
+    setAlzheimerOutputFiringTime(null);
+    setAlzheimerPausedTrainingTime(null);
+    setAlzheimerPausedElapsed(0);
+    setAlzheimerSynapticDegradation(new Map());
+    setAlzheimerResilientSynapses(new Set());
+    
+    // Reset membrane potentials
+    const initialPotentials = {};
+    neurons.forEach(neuron => {
+      initialPotentials[neuron.id] = -65.0;
+    });
+    setAlzheimerMembranePotentials(initialPotentials);
+    
+    // Reset time data
+    setAlzheimerTimeData({});
+    
+    // Reset spikes
+    const initialSpikes = {};
+    neurons.forEach(neuron => {
+      initialSpikes[neuron.id] = [];
+    });
+    setAlzheimerSpikes(initialSpikes);
+  }, [neurons]);
+
+  const handleAlzheimerCaptureEdgeStrengths = useCallback((strengths) => {
+    setAlzheimerCapturedEdgeStrengths(strengths);
+  }, []);
+
+  // Initialize neurons
+  useEffect(() => {
+    const neuronList = [
+      { id: 'I1', label: 'I1', name: 'I1', type: 'Input' },
+      { id: 'I2', label: 'I2', name: 'I2', type: 'Input' },
+      { id: 'I3', label: 'I3', name: 'I3', type: 'Input' },
+      { id: 'I4', label: 'I4', name: 'I4', type: 'Input' },
+      { id: 'I5', label: 'I5', name: 'I5', type: 'Input' },
+      { id: 'I6', label: 'I6', name: 'I6', type: 'Input' },
+      { id: 'H1', label: 'H1', name: 'H1', type: 'Inhibitory' },
+      { id: 'H2', label: 'H2', name: 'H2', type: 'Excitatory' },
+      { id: 'H3', label: 'H3', name: 'H3', type: 'Excitatory' },
+      { id: 'H4', label: 'H4', name: 'H4', type: 'Excitatory' },
+      { id: 'H5', label: 'H5', name: 'H5', type: 'Inhibitory' },
+      { id: 'H6', label: 'H6', name: 'H6', type: 'Excitatory' },
+      { id: 'H7', label: 'H7', name: 'H7', type: 'Excitatory' },
+      { id: 'H8', label: 'H8', name: 'H8', type: 'Excitatory' },
+      { id: 'H9', label: 'H9', name: 'H9', type: 'Inhibitory' },
+      { id: 'H10', label: 'H10', name: 'H10', type: 'Excitatory' },
+      { id: 'Out', label: 'Out', name: 'Out', type: 'Output' }
+    ];
+    setNeurons(neuronList);
+    
+    // Select a few neurons for detailed visualization
+    const selected = [
+      { id: 'I1', label: 'I1', name: 'I1', type: 'Input' },
+      { id: 'I2', label: 'I2', name: 'I2', type: 'Input' },
+      { id: 'H1', label: 'H1', name: 'H1', type: 'Inhibitory' },
+      { id: 'H2', label: 'H2', name: 'H2', type: 'Excitatory' },
+      { id: 'Out', label: 'Out', name: 'Out', type: 'Output' }
+    ];
+    setSelectedNeurons(selected);
+    
+    // Initialize membrane potentials
+    const initialPotentials = {};
+    neuronList.forEach(neuron => {
+      initialPotentials[neuron.id] = -65.0;
+    });
+    setMembranePotentials(initialPotentials);
+    
+    // Initialize spikes
+    const initialSpikes = {};
+    neuronList.forEach(neuron => {
+      initialSpikes[neuron.id] = [];
+    });
+    setSpikes(initialSpikes);
+  }, []);
+
+  // Membrane potential simulation with realistic depolarization
+  useEffect(() => {
+    if (!currentMode || neurons.length === 0 || analyzeMode) return;
+
+    const interval = setInterval(() => {
+      setMembranePotentials(prev => {
+        const newPotentials = { ...prev };
+        const currentTime = Date.now();
+        const simulationTime = (currentTime - (trainingStartTime || currentTime)) / 1000;
+        
+        neurons.forEach(neuron => {
+          let currentPotential = prev[neuron.id] || -65.0;
+          
+          // Base resting potential
+          const restingPotential = -70.0;
+          
+          // Calculate training progress (0 to 1 over 13-16 seconds)
+          const trainingProgress = Math.min(1, simulationTime / 16);
+          
+          // Check if this neuron is active for the current pattern
+          let isActive = false;
+          if (currentMode === 'A') {
+            // Pattern A: I1, I3, I5 are active (indices 0, 2, 4)
+            isActive = neuron.id === 'I1' || neuron.id === 'I3' || neuron.id === 'I5' || 
+                      neuron.type !== 'Input';
+          } else if (currentMode === 'B') {
+            // Pattern B: I2, I4, I6 are active (indices 1, 3, 5)
+            isActive = neuron.id === 'I2' || neuron.id === 'I4' || neuron.id === 'I6' || 
+                      neuron.type !== 'Input';
+          }
+          
+          if (!isActive && neuron.type === 'Input') {
+            // Inactive input neurons remain at resting potential
+            newPotentials[neuron.id] = restingPotential;
+            return;
+          }
+          
+          // Gradual depolarization over time
+          const depolarizationAmount = trainingProgress * 15; // -70mV to -55mV over time
+          const targetPotential = restingPotential + depolarizationAmount;
+          
+          // Add realistic fluctuations based on neuron type and activity
+          let fluctuation = 0;
+          
+          if (neuron.type === 'Input') {
+            // Input neurons have moderate activity
+            fluctuation = (Math.random() - 0.5) * 8;
+          } else if (neuron.type === 'Excitatory') {
+            // Excitatory neurons gradually increase activity
+            const activityLevel = trainingProgress * 0.8;
+            fluctuation = (Math.random() - 0.5) * 12 * activityLevel;
+          } else if (neuron.type === 'Inhibitory') {
+            // Inhibitory neurons have opposite effect
+            const activityLevel = trainingProgress * 0.6;
+            fluctuation = (Math.random() - 0.5) * 10 * activityLevel * -0.7;
+          } else if (neuron.type === 'Output') {
+            // Output neuron shows strong depolarization as it approaches firing
+            const outputActivity = Math.pow(trainingProgress, 2) * 0.9; // Accelerating activity
+            fluctuation = (Math.random() - 0.5) * 15 * outputActivity;
+            
+            // Strong depolarization in final seconds
+            if (simulationTime > 12) {
+              const finalDepolarization = (simulationTime - 12) * 2; // -2mV per second
+              fluctuation += finalDepolarization;
+            }
+          }
+          
+          // Smooth transition towards target potential
+          const smoothingFactor = 0.02; // Controls how quickly it approaches target
+          currentPotential = currentPotential * (1 - smoothingFactor) + 
+                           (targetPotential + fluctuation) * smoothingFactor;
+          
+          // Add small random noise for realism
+          const noise = (Math.random() - 0.5) * 0.5;
+          currentPotential += noise;
+          
+          // Clamp to realistic biological range
+          currentPotential = Math.max(-80, Math.min(-30, currentPotential));
+          
+          newPotentials[neuron.id] = currentPotential;
+        });
+        
+        return newPotentials;
+      });
+
+      // Update time series data and detect spikes
+      setTimeData(prev => {
+        const newTimeData = { ...prev };
+        const currentTime = Date.now();
+        const simulationTime = (currentTime - (trainingStartTime || currentTime)) / 1000;
+        
+        neurons.forEach(neuron => {
+          const currentPotential = membranePotentials[neuron.id] || -65.0;
+          if (!newTimeData[neuron.id]) {
+            newTimeData[neuron.id] = [];
+          }
+          newTimeData[neuron.id].push(currentPotential);
+          
+          // Keep only last 100 data points
+          if (newTimeData[neuron.id].length > 100) {
+            newTimeData[neuron.id] = newTimeData[neuron.id].slice(-100);
+          }
+          
+          // Detect spikes (threshold crossing at -50mV)
+          const previousPotential = membranePotentials[neuron.id] || -65.0;
+          if (currentPotential > -50 && previousPotential <= -50) {
+            setSpikes(prevSpikes => {
+              const newSpikes = { ...prevSpikes };
+              if (!newSpikes[neuron.id]) {
+                newSpikes[neuron.id] = [];
+              }
+              newSpikes[neuron.id].push(simulationTime);
+              return newSpikes;
+            });
+          }
+        });
+        
+        return newTimeData;
+      });
+    }, 100); // Update every 100ms
+
+    return () => clearInterval(interval);
+  }, [currentMode, neurons, membranePotentials, trainingStartTime, analyzeMode]);
+
+  // Output neuron firing logic (13-16 second random timing)
+  useEffect(() => {
+    if (!currentMode || !trainingStartTime || analyzeMode) return;
+    
+    const currentTime = Date.now();
+    const simulationTime = (currentTime - trainingStartTime) / 1000;
+    
+    // Set random firing time between 13-16 seconds if not already set
+    if (!outputFiringTime && simulationTime > 12) {
+      const randomFiringTime = 13 + Math.random() * 3; // 13-16 seconds
+      setOutputFiringTime(randomFiringTime);
+    }
+    
+    // Check if it's time for output neuron to fire
+    if (outputFiringTime && simulationTime >= outputFiringTime) {
+      // Add spike to output neuron
+      setSpikes(prevSpikes => {
+        const newSpikes = { ...prevSpikes };
+        if (!newSpikes['Out']) {
+          newSpikes['Out'] = [];
+        }
+        // Only add spike if not already added for this firing time
+        if (!newSpikes['Out'].includes(outputFiringTime)) {
+          newSpikes['Out'].push(outputFiringTime);
+        }
+        return newSpikes;
+      });
+    }
+  }, [currentMode, trainingStartTime, outputFiringTime, analyzeMode]);
+
+  // Analyze function to capture current synapse states
+  const analyzeSynapses = useCallback(() => {
+    // Save current training state when pausing
+    setPausedTrainingTime(trainingStartTime);
+    setPausedElapsed(trainingElapsed);
+    setAnalyzeMode(true);
+  }, [trainingStartTime, trainingElapsed]);
+
+  // Exit analyze mode
+  const exitAnalyze = useCallback(() => {
+    setAnalyzeMode(false);
+    setCapturedEdgeStrengths(new Map());
+    // Restore training state from when we paused
+    if (pausedTrainingTime) {
+      setTrainingStartTime(pausedTrainingTime);
+    }
+    if (pausedElapsed > 0) {
+      setTrainingElapsed(pausedElapsed);
+    }
+    // Note: We don't reset training progress - simulation continues from where it was paused
+  }, [pausedTrainingTime, pausedElapsed]);
+
+  // Reset simulation
+  const resetSimulation = useCallback(() => {
+    setCurrentMode(null);
+    setAnalyzeMode(false);
+    setCapturedEdgeStrengths(new Map());
+    setTrainingStartTime(null);
+    setTrainingElapsed(0);
+    setGoldenFlash({ active: false, startTime: 0 });
+    setFlashTriggerTime(null);
+    setOutputFiringTime(null);
+    setPausedTrainingTime(null);
+    setPausedElapsed(0);
+    
+    // Reset membrane potentials
+    const initialPotentials = {};
+    neurons.forEach(neuron => {
+      initialPotentials[neuron.id] = -65.0;
+    });
+    setMembranePotentials(initialPotentials);
+    
+    // Reset time data
+    setTimeData({});
+    
+    // Reset spikes
+    const initialSpikes = {};
+    neurons.forEach(neuron => {
+      initialSpikes[neuron.id] = [];
+    });
+    setSpikes(initialSpikes);
+    
+    // Trigger raster plot reset
+    setIsReset(true);
+    setTimeout(() => setIsReset(false), 100); // Reset the flag after a brief moment
+  }, [neurons]);
+
+  // Capture edge strengths from FixedNetwork
+  const handleCaptureEdgeStrengths = useCallback((strengths) => {
+    setCapturedEdgeStrengths(strengths);
+  }, []);
+
+  // Training timer effect
+  useEffect(() => {
+    if (currentMode && !analyzeMode) {
+      // Only set new training start time if we don't have a paused state
+      if (!pausedTrainingTime) {
+        setTrainingStartTime(Date.now());
+        setTrainingElapsed(0);
+        
+        // Set random flash trigger time between 13-16 seconds
+        const randomTriggerTime = 13 + Math.random() * 3; // 13.0 to 15.999
+        setFlashTriggerTime(randomTriggerTime);
       }
       
-      const deltaTime = currentTime - lastTimeRef.current;
-      const stepsToRun = Math.floor((deltaTime * speed) / 1000);
+      const interval = setInterval(() => {
+        setTrainingElapsed(prev => prev + 1);
+      }, 1000);
       
-      if (stepsToRun > 0) {
-        step(stepsToRun);
-        lastTimeRef.current = currentTime;
-      }
-      
-      animationRef.current = requestAnimationFrame(animate);
-    };
+      return () => clearInterval(interval);
+    } else if (!currentMode) {
+      // Only reset when completely stopping simulation
+      setTrainingStartTime(null);
+      setTrainingElapsed(0);
+      setFlashTriggerTime(null);
+      setGoldenFlash({ active: false, startTime: 0 });
+      setPausedTrainingTime(null);
+      setPausedElapsed(0);
+    }
+  }, [currentMode, analyzeMode, pausedTrainingTime]);
 
-    lastTimeRef.current = 0;
-    animationRef.current = requestAnimationFrame(animate);
+  // Golden flash effect when training reaches the random trigger time
+  useEffect(() => {
+    if (flashTriggerTime && trainingElapsed >= flashTriggerTime && currentMode && !analyzeMode) {
+      setGoldenFlash({ active: true, startTime: Date.now() });
+    } else if (trainingElapsed < flashTriggerTime || !currentMode || analyzeMode) {
+      setGoldenFlash({ active: false, startTime: 0 });
+    }
+  }, [trainingElapsed, flashTriggerTime, currentMode, analyzeMode]);
 
-    return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-        animationRef.current = undefined;
-      }
-    };
-  }, [isRunning, speed, step]);
-
-  // Chess.com style inline styles - matching landing page
+  // Chess.com style inline styles
   const homepageStyle = {
     minHeight: '100vh',
     padding: '0',
     background: '#262421',
     color: '#ffffff',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif'
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif',
+    position: 'relative',
+    width: '100%'
   };
 
   const heroStyle = {
@@ -1359,8 +1186,9 @@ export default function NeuronSimPage() {
   };
 
   const sectionStyle = {
-    background: '#312e2b',
-    padding: '3rem 2rem'
+    background: '#262421',
+    padding: '3rem 2rem',
+    overflowX: 'hidden'
   };
 
   const cardStyle = {
@@ -1369,114 +1197,448 @@ export default function NeuronSimPage() {
     padding: '2rem',
     margin: '1.5rem auto',
     maxWidth: '1200px',
-    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15), 0 0 20px rgba(0, 255, 0, 0.3)',
-    border: '1px solid #00ff00'
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+    border: '1px solid #3d3a37',
+    overflowX: 'hidden'
   };
 
-  const controlButtonStyle = {
-    background: '#cc8c14',
-    color: 'white',
+  const buttonStyle = {
+    background: '#1a1816',
+    color: '#b0a99f',
     padding: '0.75rem 1.5rem',
     borderRadius: '6px',
-    border: 'none',
+    border: '1px solid #3d3a37',
     fontWeight: '600',
-    fontSize: '0.9rem',
-    cursor: 'pointer',
-    margin: '0.25rem',
-    fontFamily: 'Georgia, serif',
-    minWidth: '80px'
-  };
-
-  const startButtonStyle = {
-    ...controlButtonStyle,
-    background: '#769656'
-  };
-
-  const pauseButtonStyle = {
-    ...controlButtonStyle,
-    background: '#cc4125'
-  };
-
-  const resetButtonStyle = {
-    ...controlButtonStyle,
-    background: '#5a4a2d'
-  };
-
-  const stepButtonStyle = {
-    ...controlButtonStyle,
-    background: '#2d5a2d'
-  };
-
-  const sliderContainerStyle = {
-    margin: '1.5rem 0',
-    textAlign: 'center'
-  };
-
-  const sliderLabelStyle = {
-    display: 'block',
-    marginBottom: '0.5rem',
     fontSize: '1rem',
-    color: '#b0a99f',
-    fontWeight: '500'
-  };
-
-  const sliderStyle = {
-    width: '100%',
-    height: '6px',
-    borderRadius: '3px',
-    background: '#1a1816',
-    outline: 'none',
-    cursor: 'pointer'
-  };
-
-  const patternButtonStyle = {
-    background: '#1a1816',
-    color: '#b0a99f',
-    padding: '0.5rem 1rem',
-    borderRadius: '6px',
-    border: '1px solid #3d3a37',
-    fontWeight: '600',
-    fontSize: '0.8rem',
     cursor: 'pointer',
     margin: '0.25rem',
     fontFamily: 'Georgia, serif',
-    minWidth: '100px'
+    minWidth: '120px'
   };
 
-  const rasterContainerStyle = {
-    background: '#1a1816',
-    borderRadius: '8px',
-    padding: '1rem',
-    margin: '1.5rem 0',
-    border: '1px solid #3d3a37',
-    minHeight: '300px'
+  const activeButtonStyle = {
+    ...buttonStyle,
+    background: '#769656',
+    color: '#000000'
   };
 
-  const descriptionStyle = {
-    background: '#1a1816',
-    padding: '1.5rem',
-    borderRadius: '8px',
-    marginTop: '1.5rem',
-    border: '1px solid #3d3a37'
-  };
-
-  const descriptionTextStyle = {
-    color: '#e5e0dc',
-    lineHeight: '1.6',
-    fontSize: '1rem'
-  };
-
-  const listItemStyle = {
-    marginBottom: '0.5rem',
+  const bannerStyle = {
+    textAlign: 'center',
+    marginBottom: '1rem',
+    padding: '0.75rem',
+    background: currentMode === 'A' ? '#4ade80' : '#ff6b6b',
+    color: '#000000',
+    borderRadius: '6px',
+    fontWeight: 'bold',
+    fontSize: '1.1rem',
     fontFamily: 'Georgia, serif'
   };
+
+  // Alzheimer's simulation logic - completely independent
+  // Initialize Alzheimer's membrane potentials
+  useEffect(() => {
+    if (neurons.length > 0 && Object.keys(alzheimerMembranePotentials).length === 0) {
+      const initialPotentials = {};
+      neurons.forEach(neuron => {
+        initialPotentials[neuron.id] = -65.0;
+      });
+      setAlzheimerMembranePotentials(initialPotentials);
+    }
+  }, [neurons, alzheimerMembranePotentials]);
+
+  // Alzheimer's synaptic degradation state
+  const [alzheimerSynapticDegradation, setAlzheimerSynapticDegradation] = useState(new Map());
+  const [alzheimerResilientSynapses, setAlzheimerResilientSynapses] = useState(new Set());
+  
+  // Initialize persistent synapses when Alzheimer's mode starts
+  useEffect(() => {
+    if (alzheimerMode && alzheimerResilientSynapses.size === 0) {
+      // Create 2-4 random persistent synapses that will remain strong
+      const persistentCount = 2 + Math.floor(Math.random() * 3); // 2-4 synapses
+      const newResilientSynapses = new Set();
+      
+      for (let i = 0; i < persistentCount; i++) {
+        const from = Math.floor(Math.random() * 16);
+        const to = Math.floor(Math.random() * 16);
+        if (from !== to) {
+          newResilientSynapses.add(`${from}-${to}`);
+        }
+      }
+      
+      setAlzheimerResilientSynapses(newResilientSynapses);
+    }
+  }, [alzheimerMode, alzheimerResilientSynapses.size]);
+
+  // Calculate degradation effect for a specific neuron (Alzheimer's only)
+  const calculateAlzheimerDegradationEffect = useCallback((neuronId) => {
+    const neuronIndex = neurons.findIndex(n => n.id === neuronId);
+    if (neuronIndex === -1) return 0;
+    
+    let totalDegradation = 0;
+    let connectionCount = 0;
+    
+    for (let from = 0; from < 16; from++) {
+      const synapseKey = `${from}-${neuronIndex}`;
+      const degradation = alzheimerSynapticDegradation.get(synapseKey) || 0;
+      totalDegradation += degradation;
+      connectionCount++;
+    }
+    
+    return connectionCount > 0 ? totalDegradation / connectionCount : 0;
+  }, [neurons, alzheimerSynapticDegradation]);
+
+  // Alzheimer's membrane potential simulation
+  useEffect(() => {
+    if (!alzheimerMode || neurons.length === 0 || alzheimerAnalyzeMode) return;
+
+    const interval = setInterval(() => {
+      setAlzheimerMembranePotentials(prev => {
+        const newPotentials = { ...prev };
+        const currentTime = Date.now();
+        const simulationTime = (currentTime - (alzheimerTrainingStartTime || currentTime)) / 1000;
+        
+        neurons.forEach(neuron => {
+          let currentPotential = prev[neuron.id] || -65.0;
+          
+          // Base resting potential
+          const restingPotential = -70.0;
+          
+          // Calculate training progress (0 to 1 over 13-16 seconds)
+          const trainingProgress = Math.min(1, simulationTime / 16);
+          
+          // Check if this neuron is active for the current pattern
+          let isActive = false;
+          if (alzheimerMode === 'A') {
+            // Pattern A: I1, I3, I5 are active (indices 0, 2, 4)
+            isActive = neuron.id === 'I1' || neuron.id === 'I3' || neuron.id === 'I5' || 
+                      neuron.type !== 'Input';
+          } else if (alzheimerMode === 'B') {
+            // Pattern B: I2, I4, I6 are active (indices 1, 3, 5)
+            isActive = neuron.id === 'I2' || neuron.id === 'I4' || neuron.id === 'I6' || 
+                      neuron.type !== 'Input';
+          }
+          
+          if (!isActive && neuron.type === 'Input') {
+            // Inactive input neurons remain at resting potential
+            newPotentials[neuron.id] = restingPotential;
+            return;
+          }
+          
+          // Calculate degradation effect for this neuron
+          const degradationEffect = calculateAlzheimerDegradationEffect(neuron.id);
+          
+          // Gradual depolarization over time (affected by degradation)
+          const depolarizationAmount = trainingProgress * 15 * (1 - degradationEffect * 0.3); // -70mV to -55mV over time, reduced by degradation
+          const targetPotential = restingPotential + depolarizationAmount;
+          
+          // Add realistic fluctuations based on neuron type and activity with degradation effects
+          let fluctuation = 0;
+          
+          if (neuron.type === 'Input') {
+            // Input neurons: irregular, unstable fluctuations with no clear pattern
+            const inputInstability = (Math.random() - 0.5) * 8; // Random drift between -4 and +4 mV
+            const timeBasedDrift = Math.sin(simulationTime * 0.5 + Math.random() * Math.PI) * 3; // Slow, irregular oscillations
+            fluctuation = inputInstability + timeBasedDrift;
+          } else if (neuron.type === 'Excitatory' || neuron.id === 'H1' || neuron.id === 'H2') {
+            // Hidden neurons: erratic changes, never settling into stable patterns
+            const erraticActivity = (Math.random() - 0.5) * 12; // Large random fluctuations
+            const unstableOscillation = Math.sin(simulationTime * (0.3 + Math.random() * 0.7)) * 5; // Irregular frequency oscillations
+            const degradationAmplification = degradationEffect * 2; // Amplify degradation effects
+            fluctuation = erraticActivity + unstableOscillation + degradationAmplification;
+          } else if (neuron.type === 'Inhibitory') {
+            // Inhibitory neurons: also show erratic behavior
+            const unstableActivity = (Math.random() - 0.5) * 10;
+            const erraticOscillation = Math.sin(simulationTime * (0.4 + Math.random() * 0.6)) * 4;
+            fluctuation = unstableActivity + erraticOscillation;
+          } else if (neuron.type === 'Output') {
+            // Output neuron: erratic fluctuations with irregular firing
+            const outputErraticity = (Math.random() - 0.5) * 15; // Large random fluctuations
+            const firingInstability = Math.sin(simulationTime * (0.2 + Math.random() * 0.8)) * 8; // Irregular firing patterns
+            const severeDegradation = degradationEffect * 3; // Severe degradation effects
+            fluctuation = outputErraticity + firingInstability + severeDegradation;
+          }
+          
+          
+          // Smooth transition towards target potential (affected by degradation)
+          const smoothingFactor = 0.02 * (1 - degradationEffect * 0.5); // Degraded synapses are less responsive
+          currentPotential = currentPotential * (1 - smoothingFactor) + 
+                           (targetPotential + fluctuation) * smoothingFactor;
+          
+          // Add small random noise for realism
+          const noise = (Math.random() - 0.5) * 0.5;
+          currentPotential += noise;
+          
+          // Clamp to realistic biological range
+          currentPotential = Math.max(-80, Math.min(-30, currentPotential));
+          
+          newPotentials[neuron.id] = currentPotential;
+        });
+        
+        return newPotentials;
+      });
+
+      // Update time series data and detect spikes
+      setAlzheimerTimeData(prev => {
+        const newTimeData = { ...prev };
+        const currentTime = Date.now();
+        const simulationTime = (currentTime - (alzheimerTrainingStartTime || currentTime)) / 1000;
+        
+        neurons.forEach(neuron => {
+          const currentPotential = alzheimerMembranePotentials[neuron.id] || -65.0;
+          if (!newTimeData[neuron.id]) {
+            newTimeData[neuron.id] = [];
+          }
+          newTimeData[neuron.id].push(currentPotential);
+          
+          // Keep only last 100 data points
+          if (newTimeData[neuron.id].length > 100) {
+            newTimeData[neuron.id] = newTimeData[neuron.id].slice(-100);
+          }
+          
+          // Spike detection (threshold crossing)
+          if (currentPotential > -50 && newTimeData[neuron.id].length > 1) {
+            const prevPotential = newTimeData[neuron.id][newTimeData[neuron.id].length - 2];
+            if (prevPotential <= -50) {
+              setAlzheimerSpikes(prevSpikes => {
+                const newSpikes = { ...prevSpikes };
+                if (!newSpikes[neuron.id]) {
+                  newSpikes[neuron.id] = [];
+                }
+                newSpikes[neuron.id].push(simulationTime);
+                return newSpikes;
+              });
+            }
+          }
+        });
+        
+        return newTimeData;
+      });
+    }, 100); // Update every 100ms
+
+    return () => clearInterval(interval);
+  }, [alzheimerMode, neurons, alzheimerMembranePotentials, alzheimerTrainingStartTime, alzheimerAnalyzeMode]);
+
+  // Alzheimer's output neuron firing logic with random 3-10 second intervals
+  useEffect(() => {
+    if (!alzheimerMode || !alzheimerTrainingStartTime || alzheimerAnalyzeMode) return;
+    
+    const currentTime = Date.now();
+    const simulationTime = (currentTime - alzheimerTrainingStartTime) / 1000;
+    
+    // Calculate degradation effect for output neuron
+    const outputDegradation = calculateAlzheimerDegradationEffect('Out');
+    
+    // Random firing with 3-10 second intervals - NO CONSISTENT TIMING
+    const shouldFire = () => {
+      // Get the last firing time
+      const lastFiringTime = alzheimerOutputFiringTime || 0;
+      const timeSinceLastFire = simulationTime - lastFiringTime;
+      
+      // Random interval between 3-10 seconds (affected by degradation)
+      let minInterval = 3;
+      let maxInterval = 10;
+      
+      // Degradation affects the intervals - more degradation = longer intervals
+      if (outputDegradation > 0.7) {
+        minInterval = 5;
+        maxInterval = 15; // High degradation: 5-15 seconds
+      } else if (outputDegradation > 0.4) {
+        minInterval = 4;
+        maxInterval = 12; // Medium degradation: 4-12 seconds
+      }
+      
+      // Generate random interval for this firing
+      const randomInterval = minInterval + Math.random() * (maxInterval - minInterval);
+      
+      // Check if enough time has passed since last firing
+      return timeSinceLastFire >= randomInterval;
+    };
+    
+          // Check for firing every 100ms - ALWAYS IRREGULAR, NO CONSISTENT TIMING
+          if (shouldFire()) {
+            setAlzheimerSpikes(prevSpikes => {
+              const newSpikes = { ...prevSpikes };
+              if (!newSpikes['Out']) {
+                newSpikes['Out'] = [];
+              }
+              // Add spike with current time
+              newSpikes['Out'].push(simulationTime);
+              return newSpikes;
+            });
+            
+            // Update the last firing time
+            setAlzheimerOutputFiringTime(simulationTime);
+          }
+          
+          // Generate irregular spikes for H1 and H2 hidden neurons
+          const hiddenNeuronSpikeProbability = () => {
+            const irregularityFactor = Math.random();
+            if (irregularityFactor < 0.1) {
+              // 10% chance of burst firing
+              return 0.08;
+            } else if (irregularityFactor < 0.3) {
+              // 20% chance of long pause
+              return 0.005;
+            } else {
+              // 70% chance of normal irregular firing
+              return 0.02 + Math.random() * 0.02;
+            }
+          };
+          
+          // Check for H1 and H2 firing
+          if (Math.random() < hiddenNeuronSpikeProbability()) {
+            setAlzheimerSpikes(prevSpikes => {
+              const newSpikes = { ...prevSpikes };
+              if (!newSpikes['H1']) {
+                newSpikes['H1'] = [];
+              }
+              if (!newSpikes['H2']) {
+                newSpikes['H2'] = [];
+              }
+              // Add spikes with current time for both hidden neurons
+              newSpikes['H1'].push(simulationTime);
+              newSpikes['H2'].push(simulationTime);
+              return newSpikes;
+            });
+          }
+          
+          // Generate constant activity for I1 and I2 input neurons
+          if (Math.random() < 0.03) { // 3% chance per 100ms = constant activity
+            setAlzheimerSpikes(prevSpikes => {
+              const newSpikes = { ...prevSpikes };
+              if (!newSpikes['I1']) {
+                newSpikes['I1'] = [];
+              }
+              if (!newSpikes['I2']) {
+                newSpikes['I2'] = [];
+              }
+              // Add spikes with current time for both input neurons
+              newSpikes['I1'].push(simulationTime);
+              newSpikes['I2'].push(simulationTime);
+              return newSpikes;
+            });
+          }
+  }, [alzheimerMode, alzheimerTrainingStartTime, alzheimerAnalyzeMode, calculateAlzheimerDegradationEffect, alzheimerOutputFiringTime]);
+
+  // Alzheimer's training timer effect - NO CONSISTENT TIMING
+  useEffect(() => {
+    if (alzheimerMode && !alzheimerAnalyzeMode) {
+      // Only set new training start time if we don't have a paused state
+      if (!alzheimerPausedTrainingTime) {
+        setAlzheimerTrainingStartTime(Date.now());
+        setAlzheimerTrainingElapsed(0);
+        
+        // NO CONSISTENT TIMING - Keep it completely irregular
+        // Removed the 13-16 second flash trigger for Alzheimer's simulation
+      }
+      
+      const interval = setInterval(() => {
+        setAlzheimerTrainingElapsed(prev => prev + 1);
+      }, 1000);
+      
+      return () => clearInterval(interval);
+    } else if (!alzheimerMode) {
+      // Only reset when completely stopping simulation
+      setAlzheimerTrainingStartTime(null);
+      setAlzheimerTrainingElapsed(0);
+      setAlzheimerFlashTriggerTime(null);
+      setAlzheimerGoldenFlash({ active: false, startTime: 0 });
+      setAlzheimerPausedTrainingTime(null);
+      setAlzheimerPausedElapsed(0);
+    }
+  }, [alzheimerMode, alzheimerAnalyzeMode, alzheimerPausedTrainingTime]);
+
+  // Alzheimer's golden flash effect - DISABLED for irregular firing
+  // Removed the consistent 13-16 second flash trigger
+  // Golden hue now only appears when output neuron actually fires (3-10 second random intervals)
+
+  // Initialize resilient synapses for Alzheimer's simulation
+  useEffect(() => {
+    if (alzheimerMode && alzheimerResilientSynapses.size === 0) {
+      const resilientSet = new Set();
+      // Randomly select 30% of synapses to be more resilient
+      for (let from = 0; from < 16; from++) {
+        for (let to = 0; to < 16; to++) {
+          if (from !== to && Math.random() < 0.3) {
+            resilientSet.add(`${from}-${to}`);
+          }
+        }
+      }
+      setAlzheimerResilientSynapses(resilientSet);
+    }
+  }, [alzheimerMode, alzheimerResilientSynapses.size]);
+
+  // Alzheimer's synaptic degradation effect with time-based visual changes
+  useEffect(() => {
+    if (!alzheimerMode || alzheimerAnalyzeMode) return;
+
+    const interval = setInterval(() => {
+      setAlzheimerSynapticDegradation(prev => {
+        const newDegradation = new Map(prev);
+        const currentTime = Date.now();
+        const simulationTime = (currentTime - (alzheimerTrainingStartTime || currentTime)) / 1000;
+        
+        // Time-based degradation progression
+        let degradationRate = 0;
+        let instability = 0;
+        
+        if (simulationTime <= 4) {
+          // t=0 to t=4: Initial formation - subtle degradation
+          degradationRate = Math.min(0.1, simulationTime / 40); // Very slow initial degradation
+          instability = 0.1; // Low instability
+        } else if (simulationTime <= 8) {
+          // t=4 to t=8: Attempting to stabilize - moderate degradation with flickering
+          degradationRate = 0.1 + Math.min(0.3, (simulationTime - 4) / 13.33); // 0.1 to 0.4
+          instability = 0.2 + (simulationTime - 4) * 0.05; // Increasing instability
+        } else if (simulationTime <= 13) {
+          // t=8 to t=13: Increasing fragility - high degradation
+          degradationRate = 0.4 + Math.min(0.4, (simulationTime - 8) / 12.5); // 0.4 to 0.8
+          instability = 0.4 + (simulationTime - 8) * 0.08; // High instability
+        } else {
+          // t>13: Severe degradation - random flickering
+          degradationRate = 0.8 + Math.min(0.2, (simulationTime - 13) / 10); // 0.8 to 1.0
+          instability = 0.8 + Math.random() * 0.2; // Very high random instability
+        }
+        
+        // Update degradation for all possible synapses
+        for (let from = 0; from < 16; from++) {
+          for (let to = 0; to < 16; to++) {
+            if (from !== to) {
+              const synapseKey = `${from}-${to}`;
+              const isResilient = alzheimerResilientSynapses.has(synapseKey);
+              
+              if (isResilient) {
+                // Persistent synapses: very slow degradation, sometimes even recovery
+                const currentDegradation = newDegradation.get(synapseKey) || 0;
+                const persistentDegradation = Math.max(0, currentDegradation - 0.001); // Very slow degradation
+                // Occasionally recover slightly
+                const recovery = Math.random() < 0.05 ? 0.02 : 0;
+                const finalDegradation = Math.max(0, persistentDegradation - recovery);
+                newDegradation.set(synapseKey, finalDegradation);
+              } else {
+                // Normal synapses: degrade as before
+                const baseDegradation = degradationRate;
+                const randomInstability = (Math.random() - 0.5) * instability;
+                const finalDegradation = Math.max(0, Math.min(1, baseDegradation + randomInstability));
+                newDegradation.set(synapseKey, finalDegradation);
+              }
+            }
+          }
+        }
+        
+        return newDegradation;
+      });
+    }, 100); // Update every 100ms for smooth visual changes
+
+    return () => clearInterval(interval);
+  }, [alzheimerMode, alzheimerAnalyzeMode, alzheimerTrainingStartTime, alzheimerResilientSynapses]);
 
   return (
     <div style={homepageStyle}>
       {/* Hero Section */}
       <div style={heroStyle}>
         <h1 style={titleStyle}>🧠 Interactive Neuron Simulation</h1>
-        <p style={subtitleStyle}>Watch XOR Logic Emerge from Spiking Neural Networks</p>
+        <p style={subtitleStyle}>Watch Pattern Learning Emerge from Fixed Neural Networks</p>
         
         <button 
           style={backButtonStyle}
@@ -1486,455 +1648,698 @@ export default function NeuronSimPage() {
         </button>
       </div>
 
+      {/* Introduction Modal */}
+      {showIntroModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '2rem'
+        }}>
+          <div style={{
+            background: '#262421',
+            borderRadius: '12px',
+            padding: '2rem',
+            maxWidth: '800px',
+            maxHeight: '80vh',
+            overflowY: 'auto',
+            border: '2px solid #769656',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)'
+          }}>
+            <h2 style={{
+              color: '#ffffff',
+              fontSize: '1.75rem',
+              marginBottom: '1.5rem',
+              textAlign: 'center',
+              fontFamily: 'Georgia, serif'
+            }}>
+              🧠 How Neural Simulations Work
+            </h2>
+            
+            <div style={{ color: '#e5e0dc', lineHeight: '1.6', fontSize: '1rem' }}>
+              <p style={{ marginBottom: '1.5rem' }}>
+                This simulation demonstrates <strong style={{ color: '#769656' }}>biologically accurate neural networks</strong> that can learn patterns more efficiently than traditional AI neural networks. Unlike AI systems that use gradient descent and consume massive amounts of energy, these simulations show how real neurons work.
+              </p>
+
+              <h3 style={{ color: '#ffffff', fontSize: '1.25rem', marginBottom: '1rem', fontFamily: 'Georgia, serif' }}>
+                🧬 Normal Brain Simulation
+              </h3>
+              <p style={{ marginBottom: '1rem' }}>
+                The <strong style={{ color: '#769656' }}>"Presynaptic-Postsynaptic Network"</strong> shows how a healthy brain learns:
+              </p>
+              <ul style={{ marginBottom: '1.5rem', paddingLeft: '1.5rem' }}>
+                <li style={{ marginBottom: '0.5rem' }}>
+                  <strong>Pattern A:</strong> Inputs I1, I3, I5 fire together → synapses strengthen → output neuron sparks
+                </li>
+                <li style={{ marginBottom: '0.5rem' }}>
+                  <strong>Pattern B:</strong> Inputs I2, I4, I6 fire together → synapses adapt → output neuron sparks
+                </li>
+                <li style={{ marginBottom: '0.5rem' }}>
+                  <strong>Learning:</strong> When switching patterns, neurons must learn new input combinations
+                </li>
+              </ul>
+
+              <h3 style={{ color: '#ff6b6b', fontSize: '1.25rem', marginBottom: '1rem', fontFamily: 'Georgia, serif' }}>
+                🧠 Alzheimer's Brain Simulation
+              </h3>
+              <p style={{ marginBottom: '1rem' }}>
+                The <strong style={{ color: '#ff6b6b' }}>Alzheimer's simulation</strong> shows brain dysfunction:
+              </p>
+              <ul style={{ marginBottom: '1.5rem', paddingLeft: '1.5rem' }}>
+                <li style={{ marginBottom: '0.5rem' }}>
+                  <strong>Stubborn Synapses:</strong> Some connections won't adapt to pattern changes
+                </li>
+                <li style={{ marginBottom: '0.5rem' }}>
+                  <strong>Incomplete Formation:</strong> Many synapses never fully develop
+                </li>
+                <li style={{ marginBottom: '0.5rem' }}>
+                  <strong>Erratic Output:</strong> Random firing instead of consistent pattern recognition
+                </li>
+              </ul>
+
+              <div style={{
+                background: '#1a1816',
+                padding: '1rem',
+                borderRadius: '8px',
+                border: '1px solid #3d3a37',
+                marginBottom: '1.5rem'
+              }}>
+                <p style={{ marginBottom: '0.5rem', fontStyle: 'italic' }}>
+                  <strong style={{ color: '#769656' }}>Key Insight:</strong> This demonstrates how biological neurons can accomplish the same tasks as AI neural networks but more efficiently, using less energy and water than traditional AI systems.
+                </p>
+              </div>
+            </div>
+
+            <div style={{ textAlign: 'center' }}>
+              <button
+                onClick={() => setShowIntroModal(false)}
+                style={{
+                  background: 'linear-gradient(135deg, #769656 0%, #5d7c3f 100%)',
+                  color: '#ffffff',
+                  border: 'none',
+                  padding: '0.75rem 2rem',
+                  borderRadius: '6px',
+                  fontSize: '1rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  fontFamily: 'Georgia, serif',
+                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+                  transition: 'transform 0.2s ease'
+                }}
+                onMouseOver={(e) => e.target.style.transform = 'translateY(-2px)'}
+                onMouseOut={(e) => e.target.style.transform = 'translateY(0)'}
+              >
+                Continue to Simulation
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
       <div style={sectionStyle}>
         <div style={cardStyle}>
-          <h2 style={{fontSize: '1.5rem', color: '#ffffff', marginBottom: '2rem', fontWeight: '600', fontFamily: 'Georgia, serif', textAlign: 'center'}}>
-            Simulation Controls
+          <h2 style={{fontSize: '1.5rem', color: '#ffffff', marginBottom: '1.5rem', fontWeight: '600', fontFamily: 'Georgia, serif', textAlign: 'center'}}>
+            Presynaptic-Postsynaptic Network with Live Signal Propagation
           </h2>
           
-          {/* Control Buttons */}
-          <div style={{textAlign: 'center', marginBottom: '2rem'}}>
-            {!isRunning ? (
+          {/* Pattern Training Buttons */}
+          <div style={{textAlign: 'center', marginBottom: '1rem'}}>
               <button 
-                onClick={start} 
-                style={startButtonStyle}
+              onClick={() => setCurrentMode('A')}
+              style={currentMode === 'A' ? activeButtonStyle : buttonStyle}
               >
-                ▶️ Start
+                Train Pattern A
               </button>
-            ) : (
               <button 
-                onClick={pause} 
-                style={pauseButtonStyle}
+              onClick={() => setCurrentMode('B')}
+              style={currentMode === 'B' ? activeButtonStyle : buttonStyle}
               >
-                ⏸️ Pause
+                Train Pattern B
               </button>
-            )}
-            <button 
-              onClick={() => step(1)} 
-              style={stepButtonStyle}
-            >
-              ⏭️ Step
-            </button>
-            <button 
-              onClick={reset} 
-              style={resetButtonStyle}
-            >
-              🔄 Reset
-            </button>
-          </div>
-
-          {/* Speed Control */}
-          <div style={sliderContainerStyle}>
-            <label style={sliderLabelStyle}>
-              Simulation Speed: {speed.toFixed(1)}×
-            </label>
-            <input
-              type="range"
-              min="0.25"
-              max="10"
-              step="0.25"
-              value={speed}
-              onChange={(e) => setSpeed(parseFloat(e.target.value))}
-              style={sliderStyle}
-            />
-          </div>
-
-          {/* Input Rate Controls */}
-          <div style={sliderContainerStyle}>
-            <label style={sliderLabelStyle}>
-              x1 Input Rate: {x1Rate.toFixed(1)} Hz
-            </label>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={x1Rate}
-              onChange={(e) => {
-                const rate = parseFloat(e.target.value);
-                setX1Rate(rate);
-                setRates({ x1: rate, x2: x2Rate });
+              <button 
+              onClick={analyzeMode ? exitAnalyze : analyzeSynapses}
+                style={{
+                ...buttonStyle,
+                background: analyzeMode ? '#ff6b6b' : '#4ade80',
+                color: analyzeMode ? '#ffffff' : '#000000'
               }}
-              style={sliderStyle}
-            />
-          </div>
-
-          <div style={sliderContainerStyle}>
-            <label style={sliderLabelStyle}>
-              x2 Input Rate: {x2Rate.toFixed(1)} Hz
-            </label>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={x2Rate}
-              onChange={(e) => {
-                const rate = parseFloat(e.target.value);
-                setX2Rate(rate);
-                setRates({ x1: x1Rate, x2: rate });
-              }}
-              style={sliderStyle}
-            />
-          </div>
-
-          {/* Learning Controls */}
-          <div style={{textAlign: 'center', marginTop: '2rem'}}>
-            <h3 style={{color: '#ffffff', marginBottom: '1rem', fontFamily: 'Georgia, serif', fontSize: '1.125rem'}}>
-              Learning Mechanisms
-            </h3>
-            <div style={{display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '0.5rem'}}>
-              <button 
-                onClick={toggleStdp}
-                style={{
-                  ...patternButtonStyle,
-                  background: stdpEnabled ? '#769656' : '#1a1816',
-                  color: stdpEnabled ? '#ffffff' : '#b0a99f'
-                }}
-              >
-                STDP {stdpEnabled ? 'ON' : 'OFF'}
+            >
+              {analyzeMode ? 'Exit Analysis' : 'Analyze Trained Synapses'}
               </button>
               <button 
-                onClick={toggleIntrinsic}
-                style={{
-                  ...patternButtonStyle,
-                  background: intrinsicEnabled ? '#769656' : '#1a1816',
-                  color: intrinsicEnabled ? '#ffffff' : '#b0a99f'
-                }}
-              >
-                Intrinsic {intrinsicEnabled ? 'ON' : 'OFF'}
-              </button>
-              <button 
-                onClick={toggleJitter}
-                style={{
-                  ...patternButtonStyle,
-                  background: jitterEnabled ? '#769656' : '#1a1816',
-                  color: jitterEnabled ? '#ffffff' : '#b0a99f'
-                }}
-              >
-                Jitter {jitterEnabled ? 'ON' : 'OFF'}
-              </button>
-              <button 
-                onClick={toggleLearningMode}
-                style={{
-                  ...patternButtonStyle,
-                  background: learningMode ? '#cc8c14' : '#1a1816',
-                  color: learningMode ? '#ffffff' : '#b0a99f'
-                }}
-              >
-                Learning {learningMode ? 'ON' : 'OFF'}
-              </button>
-            </div>
-          </div>
-
-          {/* Competition Mechanisms */}
-          <div style={{textAlign: 'center', marginTop: '2rem'}}>
-            <h3 style={{color: '#ffffff', marginBottom: '1rem', fontFamily: 'Georgia, serif', fontSize: '1.125rem'}}>
-              Competition Mechanisms
-            </h3>
-            <div style={{display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '0.5rem'}}>
-              <button 
-                onClick={toggleStd}
-                style={{
-                  ...patternButtonStyle,
-                  background: stdEnabled ? '#769656' : '#1a1816',
-                  color: stdEnabled ? '#ffffff' : '#b0a99f'
-                }}
-              >
-                STD {stdEnabled ? 'ON' : 'OFF'}
-              </button>
-              <button 
-                onClick={toggleRelease}
-                style={{
-                  ...patternButtonStyle,
-                  background: releaseEnabled ? '#769656' : '#1a1816',
-                  color: releaseEnabled ? '#ffffff' : '#b0a99f'
-                }}
-              >
-                Release {releaseEnabled ? 'ON' : 'OFF'}
-              </button>
-              <button 
-                onClick={toggleLateral}
-                style={{
-                  ...patternButtonStyle,
-                  background: lateralEnabled ? '#769656' : '#1a1816',
-                  color: lateralEnabled ? '#ffffff' : '#b0a99f'
-                }}
-              >
-                Lateral {lateralEnabled ? 'ON' : 'OFF'}
-              </button>
-            </div>
-          </div>
-
-          {/* Network Builder */}
-          <div style={{textAlign: 'center', marginTop: '2rem'}}>
-            <button 
-              onClick={() => setShowNetworkBuilder(!showNetworkBuilder)}
+              onClick={resetSimulation}
               style={{
-                ...controlButtonStyle,
-                background: showNetworkBuilder ? '#cc8c14' : '#769656',
-                marginBottom: '1rem'
+                ...buttonStyle,
+                background: '#ff8c00',
+                color: '#000000'
               }}
             >
-              {showNetworkBuilder ? '▼' : '▶'} Network Builder
-            </button>
-            
-            {showNetworkBuilder && (
-              <div style={{background: '#1a1816', padding: '1.5rem', borderRadius: '8px', border: '1px solid #3d3a37', textAlign: 'left'}}>
-                <h4 style={{color: '#ffffff', marginBottom: '1rem', fontFamily: 'Georgia, serif'}}>
-                  Add Neuron
-                </h4>
-                
-                <div style={{marginBottom: '1rem'}}>
-                  <label style={{color: '#b0a99f', display: 'block', marginBottom: '0.5rem'}}>Type:</label>
-                  <select 
-                    value={newNeuronType}
-                    onChange={(e) => setNewNeuronType(e.target.value)}
-                    style={{background: '#262421', color: '#ffffff', border: '1px solid #3d3a37', borderRadius: '4px', padding: '0.5rem', width: '100%'}}
-                  >
-                    <option value={NeuronType.EXCITATORY}>Excitatory (E)</option>
-                    <option value={NeuronType.INHIBITORY}>Inhibitory (I)</option>
-                  </select>
-                </div>
-
-                {newNeuronType === NeuronType.EXCITATORY && (
-                  <div style={{marginBottom: '1rem'}}>
-                    <label style={{color: '#b0a99f', display: 'block', marginBottom: '0.5rem'}}>Preset (bias only):</label>
-                    <select 
-                      value={newNeuronPreset}
-                      onChange={(e) => setNewNeuronPreset(e.target.value)}
-                      style={{background: '#262421', color: '#ffffff', border: '1px solid #3d3a37', borderRadius: '4px', padding: '0.5rem', width: '100%'}}
-                    >
-                      <option value={RolePreset.OR_BIASED}>OR-biased (lower Vth, longer τₘ)</option>
-                      <option value={RolePreset.AND_BIASED}>AND-biased (higher Vth, shorter τₘ)</option>
-                      <option value={RolePreset.NEUTRAL}>Neutral (defaults)</option>
-                    </select>
-                  </div>
-                )}
-
-                <div style={{marginBottom: '1rem'}}>
-                  <label style={{color: '#b0a99f', display: 'block', marginBottom: '0.5rem'}}>Name (optional):</label>
-                  <input 
-                    type="text"
-                    value={newNeuronName}
-                    onChange={(e) => setNewNeuronName(e.target.value)}
-                    placeholder="e.g., E3, I1"
-                    style={{background: '#262421', color: '#ffffff', border: '1px solid #3d3a37', borderRadius: '4px', padding: '0.5rem', width: '100%'}}
-                  />
-                </div>
-
-                <button 
-                  onClick={addNeuronToNetwork}
-                  style={{
-                    ...controlButtonStyle,
-                    background: '#769656',
-                    width: '100%'
-                  }}
-                >
-                  Add Neuron
-                </button>
-
-                <div style={{marginTop: '1.5rem', padding: '1rem', background: '#1a1816', borderRadius: '6px', border: '1px solid #3d3a37'}}>
-                  <h5 style={{color: '#4ade80', marginBottom: '0.5rem'}}>Current Network:</h5>
-                  <div style={{color: '#b0a99f', fontSize: '0.9rem'}}>
-                    {network.meta.map((neuron, index) => (
-                      <div key={index} style={{display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem'}}>
-                        <span>{neuron.name} ({neuron.type})</span>
-                        {neuron.type !== NeuronType.INPUT && neuron.type !== NeuronType.OUTPUT && (
-                          <button 
-                            onClick={() => removeNeuronFromNetwork(index)}
-                            style={{
-                              background: '#cc4125',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '3px',
-                              padding: '0.25rem 0.5rem',
-                              fontSize: '0.8rem'
-                            }}
-                          >
-                            Remove
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Test Patterns */}
-          <div style={{textAlign: 'center', marginTop: '2rem'}}>
-            <h3 style={{color: '#ffffff', marginBottom: '1rem', fontFamily: 'Georgia, serif', fontSize: '1.125rem'}}>
-              Test Patterns
-            </h3>
-            <div style={{display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '0.5rem'}}>
-              <button 
-                onClick={() => firePattern('00')}
-                style={patternButtonStyle}
-              >
-                00 (No input)
-              </button>
-              <button 
-                onClick={() => firePattern('10')}
-                style={patternButtonStyle}
-              >
-                10 (x1 only)
-              </button>
-              <button 
-                onClick={() => firePattern('01')}
-                style={patternButtonStyle}
-              >
-                01 (x2 only)
-              </button>
-              <button 
-                onClick={() => firePattern('11')}
-                style={patternButtonStyle}
-              >
-                11 (Both inputs)
+              Reset Simulation
               </button>
             </div>
-          </div>
-        </div>
-
-        {/* Individual Neuron Displays */}
-        <div style={cardStyle}>
-          <h2 style={{fontSize: '1.5rem', color: '#ffffff', marginBottom: '1.5rem', fontWeight: '600', fontFamily: 'Georgia, serif', textAlign: 'center'}}>
-            Individual Neuron States
-          </h2>
-          <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem'}}>
-            {network.neurons.map((neuron, index) => {
-              const isSpiking = spikesWindow.some(([neuronId, time]) => 
-                neuronId === index && time > network.tMs - 100
-              );
-              return (
-                <div key={index} style={{textAlign: 'center'}}>
-                  <div style={{height: '150px', marginBottom: '0.5rem'}}>
-                    <NeuronDisplay
-                      neuronId={index}
-                      neuron={neuron}
-                      params={network.nParams[index]}
-                      spikes={spikesWindow}
-                      isSpiking={isSpiking}
-                      className="w-full h-full"
-                    />
-                  </div>
-                  <div style={{color: '#b0a99f', fontSize: '0.9rem', fontFamily: 'Georgia, serif'}}>
-                    {network.meta[index]?.name || `N${index}`}
-                  </div>
-                  <div style={{color: '#4ade80', fontSize: '0.8rem'}}>
-                    {network.meta[index]?.type || 'Unknown'}
-                  </div>
-                  <div style={{color: '#769656', fontSize: '0.8rem'}}>
-                    {neuron.V.toFixed(1)}mV
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Membrane Traces */}
-        <div style={cardStyle}>
-          <h2 style={{fontSize: '1.5rem', color: '#ffffff', marginBottom: '1.5rem', fontWeight: '600', fontFamily: 'Georgia, serif', textAlign: 'center'}}>
-            Membrane Potential Traces
-          </h2>
-          <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem'}}>
-            {network.neurons.map((neuron, index) => (
-              <div key={index} style={{textAlign: 'center'}}>
-                <div style={{color: '#b0a99f', fontSize: '1rem', marginBottom: '0.5rem', fontFamily: 'Georgia, serif'}}>
-                  {index === 0 ? 'x1' : index === 1 ? 'x2' : 
-                   index === 2 ? 'H_OR' : index === 3 ? 'H_AND' : 'O'} Membrane Trace
-                </div>
-                <div style={{height: '120px', background: '#1a1816', borderRadius: '6px', border: '1px solid #3d3a37'}}>
-                  <MembraneTrace
-                    neuronId={index}
-                    voltage={neuron.V}
-                    timeWindow={2000}
-                    className="w-full h-full"
-                  />
-                </div>
+            
+          {/* Training Pattern Banner */}
+          {analyzeMode ? (
+            <div style={{...bannerStyle, background: '#4ade80'}}>
+              ANALYZING TRAINED SYNAPSES - NO INPUT FIRING
               </div>
-            ))}
-          </div>
-        </div>
+          ) : currentMode ? (
+            <div style={bannerStyle}>
+              TRAINING PATTERN {currentMode} - {trainingElapsed} seconds training {currentMode.toLowerCase()}
+              </div>
+          ) : null}
 
-        {/* Network Graph with Animated Connections */}
-        <div style={cardStyle}>
-          <h2 style={{fontSize: '1.5rem', color: '#ffffff', marginBottom: '1.5rem', fontWeight: '600', fontFamily: 'Georgia, serif', textAlign: 'center'}}>
-            Neural Network with Live Signal Propagation
-          </h2>
-          <div style={{height: '800px', width: '100%', background: '#1a1816', borderRadius: '8px', border: '1px solid #3d3a37', marginBottom: '1rem', overflow: 'hidden', position: 'relative'}}>
-            <NetworkGraph
-              network={network}
-              spikes={spikesWindow}
-              className="w-full h-full"
+          {/* Individual Neuron States */}
+          <IndividualNeuronStates 
+            neurons={neurons}
+            membranePotentials={membranePotentials}
+            currentMode={currentMode}
+          />
+
+          {/* Selective Membrane Potentials */}
+          <SelectiveMembranePotentials 
+            selectedNeurons={selectedNeurons}
+            membranePotentials={membranePotentials}
+            timeData={timeData}
+            currentMode={currentMode}
+          />
+
+          {/* Raster Plot - Always visible */}
+          <RasterPlot 
+            selectedNeurons={selectedNeurons}
+            spikes={spikes}
+            timeData={timeData}
+            outputFiringTime={outputFiringTime}
+            isReset={isReset}
+            isSimulationRunning={currentMode !== null && !analyzeMode}
+            currentMode={currentMode}
+          />
+
+          {/* Alzheimer's Raster Plot - REMOVED (was showing empty/not working) */}
+
+          {/* Network Canvas */}
+          <div style={{height: '800px', width: '100%', background: '#1a1816', borderRadius: '8px', border: 'none', marginBottom: '1rem', overflow: 'hidden', position: 'relative', boxShadow: '0 0 8px rgba(74, 222, 128, 0.6), 0 0 16px rgba(74, 222, 128, 0.3)'}}>
+            <FixedNetwork 
+              currentMode={currentMode}
+              onModeChange={handleModeChange}
+              analyzeMode={analyzeMode}
+              analyzeSynapses={analyzeSynapses}
+              exitAnalyze={exitAnalyze}
+              onCaptureEdgeStrengths={handleCaptureEdgeStrengths}
+              capturedEdgeStrengths={capturedEdgeStrengths}
+              goldenFlash={goldenFlash}
             />
           </div>
+          
           <div style={{textAlign: 'center', color: '#b0a99f', fontSize: '0.9rem'}}>
             <span style={{color: '#4ade80'}}>●</span> Excitatory connections &nbsp;&nbsp;
             <span style={{color: '#ff6b6b'}}>●</span> Inhibitory connections &nbsp;&nbsp;
-            <span style={{color: '#ff6b6b'}}>⚡</span> Moving signals
+            <span style={{color: '#4ade80'}}>⚡</span> Signal particles
           </div>
         </div>
 
-        {/* Raster Plot */}
+        {/* Description */}
         <div style={cardStyle}>
           <h2 style={{fontSize: '1.5rem', color: '#ffffff', marginBottom: '1.5rem', fontWeight: '600', fontFamily: 'Georgia, serif', textAlign: 'center'}}>
-            Neural Activity Raster Plot
+            🧠 Network Pattern Learning Demo
           </h2>
-          <div style={rasterContainerStyle}>
-            <RasterPlot
-              spikes={spikesWindow}
-              neuronCount={5}
-              timeWindow={2000}
-              className="w-full h-full"
-            />
-          </div>
-        </div>
+          <div style={{
+            background: 'linear-gradient(135deg, #1a1816 0%, #262421 100%)',
+            padding: '2rem',
+            borderRadius: '12px',
+            border: '2px solid #769656',
+            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.3)',
+            position: 'relative',
+            overflow: 'hidden'
+          }}>
+            {/* Decorative background pattern */}
+            <div style={{
+              position: 'absolute',
+              top: '-50%',
+              right: '-50%',
+              width: '200%',
+              height: '200%',
+              background: 'radial-gradient(circle, rgba(118, 150, 86, 0.05) 0%, transparent 70%)',
+              pointerEvents: 'none'
+            }}></div>
+            
+            <div style={{ position: 'relative', zIndex: 1 }}>
+              <p style={{color: '#e5e0dc', lineHeight: '1.7', fontSize: '1.1rem', marginBottom: '1.5rem', fontWeight: '500'}}>
+                This simulation demonstrates <strong style={{color: '#769656'}}>biologically accurate neural learning</strong> that can accomplish the same tasks as AI neural networks but more efficiently. Unlike traditional AI that uses gradient descent and consumes massive energy, these neurons learn through <strong style={{color: '#769656'}}>synaptic strengthening</strong>.
+              </p>
+              
+              <div style={{
+                background: '#262421',
+                padding: '1.5rem',
+                borderRadius: '8px',
+                border: '1px solid #3d3a37',
+                marginBottom: '1.5rem'
+              }}>
+                <h3 style={{color: '#ffffff', fontSize: '1.2rem', marginBottom: '1rem', fontFamily: 'Georgia, serif'}}>
+                  🧬 How Neurons Learn Patterns
+                </h3>
+                <ul style={{color: '#e5e0dc', paddingLeft: '1.5rem', lineHeight: '1.6'}}>
+                  <li style={{marginBottom: '0.75rem', fontFamily: 'Georgia, serif'}}>
+                    <strong style={{color: '#769656'}}>Pattern A (I1, I3, I5):</strong> When these inputs fire together, synapses strengthen and create a pathway to the output neuron
+                  </li>
+                  <li style={{marginBottom: '0.75rem', fontFamily: 'Georgia, serif'}}>
+                    <strong style={{color: '#769656'}}>Pattern B (I2, I4, I6):</strong> Switching patterns forces neurons to learn new input combinations and adapt their connections
+                  </li>
+                  <li style={{marginBottom: '0.75rem', fontFamily: 'Georgia, serif'}}>
+                    <strong style={{color: '#769656'}}>Synaptic Learning:</strong> Connections brighten and thicken as they strengthen, showing real biological plasticity
+                  </li>
+                  <li style={{marginBottom: '0.75rem', fontFamily: 'Georgia, serif'}}>
+                    <strong style={{color: '#769656'}}>Output Gating:</strong> The output neuron only fires when sufficient synaptic strength is achieved
+                  </li>
+                </ul>
+              </div>
 
-        {/* Network Description */}
-        <div style={cardStyle}>
-          <h2 style={{fontSize: '1.5rem', color: '#ffffff', marginBottom: '1.5rem', fontWeight: '600', fontFamily: 'Georgia, serif', textAlign: 'center'}}>
-            Biologically Sound Neural Network Builder
-          </h2>
-          <div style={descriptionStyle}>
-            <p style={descriptionTextStyle}>
-              This simulation lets you build neural networks with biologically realistic neurons and synapses. 
-              No "AND/OR" logic labels - roles emerge through learning!
-            </p>
-            <ul style={{color: '#e5e0dc', marginTop: '1rem', paddingLeft: '1.5rem'}}>
-              <li style={listItemStyle}>
-                <strong style={{color: '#769656'}}>x1, x2:</strong> Poisson spike generators (no DC current)
-              </li>
-              <li style={listItemStyle}>
-                <strong style={{color: '#769656'}}>E1, E2:</strong> Excitatory neurons with role presets (biases only)
-              </li>
-              <li style={listItemStyle}>
-                <strong style={{color: '#769656'}}>O:</strong> Output neuron - spikes when net excitation > inhibition
-              </li>
-            </ul>
-            <p style={{...descriptionTextStyle, marginTop: '1.5rem', padding: '1rem', background: '#1a1816', borderRadius: '6px', border: '1px solid #3d3a37'}}>
-              <strong style={{color: '#cc8c14'}}>Role Presets (biophysical biases only):</strong> 
-              <br/>• <strong>OR-biased:</strong> Lower Vth (-51mV), longer τₘ (25ms) → responds to single inputs
-              <br/>• <strong>AND-biased:</strong> Higher Vth (-49mV), shorter τₘ (15ms) → prefers coincident inputs
-              <br/>• <strong>Neutral:</strong> Default parameters - learning determines role
-              <br/>• <strong>Learning:</strong> STDP + intrinsic plasticity refine these biases
-            </p>
-            <p style={{...descriptionTextStyle, marginTop: '1rem', padding: '1rem', background: '#1a1816', borderRadius: '6px', border: '1px solid #3d3a37'}}>
-              <strong style={{color: '#4ade80'}}>Network Builder Features:</strong>
-              <br/>• <strong>Add Neurons:</strong> Excitatory (E) or Inhibitory (I) with role presets
-              <br/>• <strong>Auto-connect:</strong> New neurons connect from inputs and to output
-              <br/>• <strong>Sign Conservation:</strong> E→E positive, I→E negative (biologically correct)
-              <br/>• <strong>Dynamic Layout:</strong> GraphView auto-arranges by neuron type
-            </p>
-            <p style={{...descriptionTextStyle, marginTop: '1rem', padding: '1rem', background: '#1a1816', borderRadius: '6px', border: '1px solid #3d3a37'}}>
-              <strong style={{color: '#ff6b6b'}}>Why This Works:</strong> No fake logic labels! 
-              XOR emerges when OR-biased E neurons win on single inputs, while AND-biased E neurons 
-              or I neurons suppress output on coincident inputs. Roles are determined by spike timing and learning!
-            </p>
+              <div style={{
+                background: 'linear-gradient(135deg, #769656 0%, #5d7c3f 100%)',
+                padding: '1.5rem',
+                borderRadius: '8px',
+                border: '1px solid #4ade80',
+                boxShadow: '0 4px 12px rgba(118, 150, 86, 0.2)'
+              }}>
+                <p style={{color: '#ffffff', lineHeight: '1.6', fontSize: '1rem', margin: 0, fontWeight: '500'}}>
+                  <strong>💡 Key Insight:</strong> This demonstrates how biological neurons can accomplish the same tasks as AI neural networks but more efficiently, using less energy and water than traditional AI systems. Watch the visual feedback as connections strengthen and glow when patterns are learned!
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* ALZHEIMER'S SIMULATION - RED THEME */}
+      <div style={{
+        background: '#262421',
+        borderRadius: '12px',
+        padding: '2rem',
+        margin: '1.5rem auto',
+        maxWidth: '1200px',
+        boxShadow: '0 0 20px rgba(0, 0, 0, 0.5)',
+        overflowX: 'hidden'
+      }}>
+        <h2 style={{
+          color: '#ffffff',
+          fontSize: '2rem',
+          marginBottom: '1.5rem',
+          textAlign: 'center'
+        }}>
+          Alzheimer's Neuron Simulation
+        </h2>
+
+        {/* Alzheimer's Timer Display */}
+        {alzheimerMode && (
+          <div style={{
+            textAlign: 'center',
+            marginBottom: '1rem',
+            padding: '1rem',
+            background: '#1a1816',
+            borderRadius: '8px',
+            border: '2px solid #ff6b6b',
+            boxShadow: '0 0 8px rgba(255, 107, 107, 0.6), 0 0 16px rgba(255, 107, 107, 0.3)'
+          }}>
+            <div style={{
+              color: '#ff9999',
+              fontSize: '1.2rem',
+              fontWeight: 'bold',
+              marginBottom: '0.5rem'
+            }}>
+              Alzheimer's Simulation Timer
+            </div>
+            <div style={{
+              color: '#ffffff',
+              fontSize: '2rem',
+              fontWeight: 'bold',
+              fontFamily: 'monospace'
+            }}>
+              {alzheimerTrainingElapsed}s
+            </div>
+            <div style={{
+              color: '#ff9999',
+              fontSize: '1rem',
+              marginTop: '0.5rem'
+            }}>
+              Pattern {alzheimerMode} - Degradation Progress: {Math.min(100, Math.round((alzheimerTrainingElapsed / 30) * 100))}%
+            </div>
+          </div>
+        )}
+
+        {/* Duplicate Control Buttons */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          gap: '1rem',
+          marginBottom: '2rem',
+          flexWrap: 'wrap'
+        }}>
+          <button
+            onClick={() => handleAlzheimerModeChange('A')}
+            style={{
+              background: alzheimerMode === 'A' ? '#ff6b6b' : '#2d2b28',
+              color: alzheimerMode === 'A' ? '#000000' : '#ff6b6b',
+              border: '2px solid #ff6b6b',
+              borderRadius: '8px',
+              padding: '0.75rem 1.5rem',
+              fontSize: '1rem',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              transition: 'all 0.3s ease',
+              boxShadow: alzheimerMode === 'A' ? '0 0 15px rgba(255, 107, 107, 0.8)' : 'none'
+            }}
+          >
+            Train Pattern A
+          </button>
+          <button
+            onClick={() => handleAlzheimerModeChange('B')}
+            style={{
+              background: alzheimerMode === 'B' ? '#ff6b6b' : '#2d2b28',
+              color: alzheimerMode === 'B' ? '#000000' : '#ff6b6b',
+              border: '2px solid #ff6b6b',
+              borderRadius: '8px',
+              padding: '0.75rem 1.5rem',
+              fontSize: '1rem',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              transition: 'all 0.3s ease',
+              boxShadow: alzheimerMode === 'B' ? '0 0 15px rgba(255, 107, 107, 0.8)' : 'none'
+            }}
+          >
+            Train Pattern B
+          </button>
+          <button
+            onClick={alzheimerAnalyzeMode ? alzheimerExitAnalyze : alzheimerAnalyzeSynapses}
+            style={{
+              background: alzheimerAnalyzeMode ? '#ff8c00' : '#2d2b28',
+              color: alzheimerAnalyzeMode ? '#000000' : '#ff8c00',
+              border: '2px solid #ff8c00',
+              borderRadius: '8px',
+              padding: '0.75rem 1.5rem',
+              fontSize: '1rem',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              transition: 'all 0.3s ease',
+              boxShadow: alzheimerAnalyzeMode ? '0 0 15px rgba(255, 140, 0, 0.8)' : 'none'
+            }}
+          >
+            {alzheimerAnalyzeMode ? 'Exit Analysis' : 'Analyze Synapses'}
+          </button>
+          <button
+            onClick={alzheimerResetSimulation}
+            style={{
+              background: '#2d2b28',
+              color: '#ff6b6b',
+              border: '2px solid #ff6b6b',
+              borderRadius: '8px',
+              padding: '0.75rem 1.5rem',
+              fontSize: '1rem',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              transition: 'all 0.3s ease'
+            }}
+          >
+            Reset Simulation
+          </button>
+        </div>
+
+        {/* Duplicate Individual Neuron States */}
+        <div style={{
+          background: '#1a1816',
+          border: 'none',
+          borderRadius: '8px',
+          padding: '1rem',
+          marginBottom: '1rem',
+          boxShadow: '0 0 8px rgba(255, 107, 107, 0.6), 0 0 16px rgba(255, 107, 107, 0.3)'
+        }}>
+          <div style={{
+            background: '#1a1816',
+            border: 'none',
+            borderRadius: '8px',
+            padding: '1rem',
+            marginBottom: '1rem',
+            boxShadow: 'none',
+            position: 'relative'
+          }}>
+            <h3 style={{
+              color: '#ffffff',
+              fontSize: '1.5rem',
+              marginBottom: '1rem',
+              textAlign: 'center'
+            }}>
+              Individual Neuron States
+            </h3>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(6, 1fr)',
+              gridTemplateRows: 'repeat(3, 1fr)',
+              gap: '1.5rem',
+              padding: '1rem',
+              minHeight: '400px',
+              alignItems: 'center',
+              justifyItems: 'center'
+            }}>
+              {(() => {
+                const inputNeurons = neurons.filter(n => n.type === 'Input');
+                const hiddenNeurons = neurons.filter(n => n.type === 'Excitatory' || n.type === 'Inhibitory');
+                const outputNeurons = neurons.filter(n => n.type === 'Output');
+                
+                const organizedNeurons = [
+                  ...inputNeurons,
+                  ...hiddenNeurons.slice(0, 6),
+                  ...hiddenNeurons.slice(6),
+                  ...outputNeurons
+                ];
+                
+                return organizedNeurons.map((neuron, index) => {
+                  const potential = alzheimerMembranePotentials[neuron.id] || -65.0;
+                  
+                  const neuronCircleStyle = (neuron) => {
+                    let backgroundColor = '#4ade80';
+                    let shadowColor = 'rgba(74, 222, 128, 0.8)';
+                    let shadowColorOuter = 'rgba(74, 222, 128, 0.4)';
+                    
+                    if (neuron.type === 'Excitatory') {
+                      backgroundColor = '#ff8c00';
+                      shadowColor = 'rgba(255, 140, 0, 0.8)';
+                      shadowColorOuter = 'rgba(255, 140, 0, 0.4)';
+                    } else if (neuron.type === 'Inhibitory') {
+                      backgroundColor = '#ff6b6b';
+                      shadowColor = 'rgba(255, 107, 107, 0.8)';
+                      shadowColorOuter = 'rgba(255, 107, 107, 0.4)';
+                    } else if (neuron.type === 'Output') {
+                      backgroundColor = '#ffd700';
+                      shadowColor = 'rgba(255, 215, 0, 0.8)';
+                      shadowColorOuter = 'rgba(255, 215, 0, 0.4)';
+                    }
+                    
+                    return {
+                      width: '60px',
+                      height: '60px',
+                      borderRadius: '50%',
+                      background: backgroundColor,
+                      border: 'none',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#ffffff',
+                      fontSize: '0.9rem',
+                      fontWeight: 'bold',
+                      boxShadow: `0 0 6px ${shadowColor}, 0 0 12px ${shadowColorOuter}`,
+                      position: 'relative'
+                    };
+                  };
+                  
+                  let isActive = true;
+                  if (alzheimerMode === 'A') {
+                    isActive = neuron.id === 'I1' || neuron.id === 'I3' || neuron.id === 'I5' || neuron.type !== 'Input';
+                  } else if (alzheimerMode === 'B') {
+                    isActive = neuron.id === 'I2' || neuron.id === 'I4' || neuron.id === 'I6' || neuron.type !== 'Input';
+                  }
+                  
+                  return (
+                    <div key={neuron.id} style={{ textAlign: 'center' }}>
+                      <div style={neuronCircleStyle(neuron)}>
+                        <div>{neuron.label}</div>
+                      </div>
+                      <div style={{ 
+                        color: isActive ? '#ff9999' : '#666666',
+                        fontSize: '0.8rem',
+                        marginTop: '0.5rem',
+                        textAlign: 'center',
+                        lineHeight: '1.2'
+                      }}>
+                        <div>{neuron.label}</div>
+                        <div>{neuron.type}</div>
+                        <div>{isActive ? `${potential.toFixed(1)}mV` : '- Inactive'}</div>
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+        </div>
+
+        {/* Alzheimer's Membrane Potential Graphs */}
+        <div style={{
+          background: '#1a1816',
+          border: 'none',
+          borderRadius: '8px',
+          padding: '1rem',
+          marginBottom: '1rem',
+          boxShadow: '0 0 8px rgba(255, 107, 107, 0.6), 0 0 16px rgba(255, 107, 107, 0.3)'
+        }}>
+          <h3 style={{
+            color: '#ffffff',
+            fontSize: '1.5rem',
+            marginBottom: '1rem',
+            textAlign: 'center'
+          }}>
+            Alzheimer's Membrane Potential Traces
+          </h3>
+          {selectedNeurons && selectedNeurons.length > 0 && (
+            <MembraneTraces 
+              neurons={selectedNeurons}
+              membranePotentials={alzheimerMembranePotentials}
+              timeData={alzheimerTimeData || {}}
+              hideTitle={true}
+              hideBorder={true}
+              currentMode={alzheimerMode}
+            />
+          )}
+        </div>
+
+        {/* Alzheimer's Raster Plot - Shows I1, I2, H1, H2, and Output activity */}
+        <div style={{
+          background: '#1a1816',
+          border: 'none',
+          borderRadius: '8px',
+          padding: '1rem',
+          marginBottom: '1rem',
+          boxShadow: '0 0 8px rgba(255, 107, 107, 0.6), 0 0 16px rgba(255, 107, 107, 0.3)'
+        }}>
+          <h3 style={{
+            color: '#ffffff',
+            fontSize: '1.5rem',
+            marginBottom: '1rem',
+            textAlign: 'center'
+          }}>
+            Alzheimer's Neural Activity Raster Plot
+          </h3>
+          <RasterPlot 
+            selectedNeurons={selectedNeurons}
+            spikes={alzheimerSpikes}
+            timeData={alzheimerTimeData}
+            outputFiringTime={alzheimerOutputFiringTime}
+            isReset={isReset}
+            isSimulationRunning={alzheimerMode !== null && !alzheimerAnalyzeMode}
+            currentMode={alzheimerMode}
+            hideTitle={true}
+            hideThreshold={true}
+          />
+        </div>
+
+
+        {/* Duplicate Network Canvas */}
+        <div style={{
+          height: '800px',
+          width: '100%',
+          background: '#1a1816',
+          borderRadius: '8px',
+          border: 'none',
+          marginBottom: '1rem',
+          overflow: 'hidden',
+          position: 'relative',
+          boxShadow: '0 0 8px rgba(255, 107, 107, 0.6), 0 0 16px rgba(255, 107, 107, 0.3)'
+        }}>
+          <FixedNetwork 
+            currentMode={alzheimerMode}
+            onModeChange={handleAlzheimerModeChange}
+            analyzeMode={alzheimerAnalyzeMode}
+            analyzeSynapses={alzheimerAnalyzeSynapses}
+            exitAnalyze={alzheimerExitAnalyze}
+            onCaptureEdgeStrengths={handleAlzheimerCaptureEdgeStrengths}
+            capturedEdgeStrengths={alzheimerCapturedEdgeStrengths}
+            goldenFlash={alzheimerGoldenFlash}
+            synapticDegradation={alzheimerSynapticDegradation}
+            resilientSynapses={alzheimerResilientSynapses}
+            isAlzheimerSimulation={true}
+            alzheimerTrainingStartTime={alzheimerTrainingStartTime}
+            calculateAlzheimerDegradationEffect={calculateAlzheimerDegradationEffect}
+            alzheimerSpikes={alzheimerSpikes}
+          />
+        </div>
+
+        {/* Alzheimer's Simulation Description */}
+        <div style={{
+          background: '#1a1816',
+          padding: '1.5rem',
+          borderRadius: '8px',
+          border: '1px solid #3d3a37',
+          marginTop: '1.5rem'
+        }}>
+          <h3 style={{
+            color: '#ffffff',
+            fontSize: '1.25rem',
+            marginBottom: '1rem',
+            fontWeight: '600',
+            fontFamily: 'Georgia, serif'
+          }}>
+            Alzheimer's Disease Effects on Neural Networks
+          </h3>
+          <p style={{
+            color: '#e5e0dc',
+            lineHeight: '1.6',
+            fontSize: '1rem',
+            marginBottom: '1rem'
+          }}>
+            In this simulation, you will observe how Alzheimer's disease affects neural network learning:
+          </p>
+          <ul style={{
+            color: '#e5e0dc',
+            marginTop: '1rem',
+            paddingLeft: '1.5rem',
+            lineHeight: '1.6'
+          }}>
+            <li style={{marginBottom: '0.75rem', fontFamily: 'Georgia, serif'}}>
+              <strong style={{color: '#ff6b6b'}}>Stubborn Synapses:</strong> Some connections become rigid and do not weaken when patterns change, preventing the network from adapting to new input patterns.
+            </li>
+            <li style={{marginBottom: '0.75rem', fontFamily: 'Georgia, serif'}}>
+              <strong style={{color: '#ff6b6b'}}>Incomplete Formation:</strong> Many synapses fail to form properly, creating gaps in the neural pathway that prevent effective signal transmission.
+            </li>
+            <li style={{marginBottom: '0.75rem', fontFamily: 'Georgia, serif'}}>
+              <strong style={{color: '#ff6b6b'}}>Erratic Output:</strong> The output neuron fires irregularly and unpredictably because proper connections cannot be established, leading to random bursts and long pauses.
+            </li>
+            <li style={{marginBottom: '0.75rem', fontFamily: 'Georgia, serif'}}>
+              <strong style={{color: '#ff6b6b'}}>No Pattern Learning:</strong> Despite using the same input patterns (I1, I3, I5 for Pattern A and I2, I4, I6 for Pattern B), the synapses cannot adapt to the specific firing patterns, preventing the network from learning to distinguish between different inputs.
+            </li>
+          </ul>
+          <p style={{
+            color: '#b0a99f',
+            fontSize: '0.9rem',
+            fontStyle: 'italic',
+            marginTop: '1rem',
+            padding: '0.75rem',
+            background: '#262421',
+            borderRadius: '4px',
+            border: '1px solid #3d3a37'
+          }}>
+            This demonstrates how synaptic degradation in Alzheimer's disease prevents the formation of stable neural pathways, leading to memory loss and cognitive decline.
+          </p>
+        </div>
+      </div>
+
     </div>
   );
 }
+
