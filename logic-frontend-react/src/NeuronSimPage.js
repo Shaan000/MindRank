@@ -756,6 +756,17 @@ export default function NeuronSimPage() {
   const [alzheimerGoldenFlash, setAlzheimerGoldenFlash] = useState({ active: false, startTime: 0 });
   const [alzheimerFlashTriggerTime, setAlzheimerFlashTriggerTime] = useState(null);
   const [showIntroModal, setShowIntroModal] = useState(true);
+  const [windowWidth, setWindowWidth] = useState(windowWidth);
+
+  // Handle window resize for responsive design
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowWidth(windowWidth);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   const [alzheimerCapturedEdgeStrengths, setAlzheimerCapturedEdgeStrengths] = useState(new Map());
   const [alzheimerPausedTrainingTime, setAlzheimerPausedTrainingTime] = useState(null);
   const [alzheimerPausedElapsed, setAlzheimerPausedElapsed] = useState(0);
@@ -1144,35 +1155,39 @@ export default function NeuronSimPage() {
     color: '#ffffff',
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif',
     position: 'relative',
-    width: '100%'
+    width: '100%',
+    overflowX: 'hidden'
   };
 
   const heroStyle = {
     background: 'linear-gradient(135deg, #769656 0%, #5d7c3f 100%)',
     textAlign: 'center',
-    padding: '4rem 2rem',
+    padding: windowWidth < 768 ? '2rem 1rem' : '4rem 2rem',
     position: 'relative',
     boxShadow: '0 4px 20px rgba(0, 0, 0, 0.2)',
     borderBottom: '2px solid #8fb366'
   };
 
   const titleStyle = {
-    fontSize: '3rem',
+    fontSize: windowWidth < 768 ? '2rem' : windowWidth < 1024 ? '2.5rem' : '3rem',
     fontWeight: '800',
-    marginBottom: '1.5rem',
+    marginBottom: windowWidth < 768 ? '1rem' : '1.5rem',
     color: '#ffffff',
     fontFamily: 'Georgia, serif',
     textShadow: '0 3px 6px rgba(0, 0, 0, 0.4)',
-    letterSpacing: '0.5px'
+    letterSpacing: '0.5px',
+    lineHeight: '1.2'
   };
 
   const subtitleStyle = {
-    fontSize: '1.25rem',
+    fontSize: windowWidth < 768 ? '1rem' : '1.25rem',
     color: 'rgba(255, 255, 255, 0.95)',
-    marginBottom: '2.5rem',
+    marginBottom: windowWidth < 768 ? '1.5rem' : '2.5rem',
     fontWeight: '500',
     textShadow: '0 1px 3px rgba(0, 0, 0, 0.3)',
-    letterSpacing: '0.3px'
+    letterSpacing: '0.3px',
+    lineHeight: '1.4',
+    padding: windowWidth < 768 ? '0 1rem' : '0'
   };
 
   const backButtonStyle = {
@@ -1182,31 +1197,33 @@ export default function NeuronSimPage() {
     gap: '0.5rem',
     background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)',
     color: '#262421',
-    padding: '1rem 2rem',
+    padding: windowWidth < 768 ? '0.75rem 1.5rem' : '1rem 2rem',
     borderRadius: '10px',
     fontWeight: '700',
-    fontSize: '1rem',
+    fontSize: windowWidth < 768 ? '0.9rem' : '1rem',
     border: '2px solid #e9ecef',
     cursor: 'pointer',
     boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
     textDecoration: 'none',
     transition: 'all 0.3s ease',
-    letterSpacing: '0.3px'
+    letterSpacing: '0.3px',
+    minWidth: windowWidth < 768 ? '120px' : 'auto',
+    touchAction: 'manipulation'
   };
 
   const sectionStyle = {
     background: 'linear-gradient(135deg, #262421 0%, #1a1816 100%)',
-    padding: '4rem 2rem',
+    padding: windowWidth < 768 ? '2rem 1rem' : windowWidth < 1024 ? '3rem 1.5rem' : '4rem 2rem',
     overflowX: 'hidden',
     boxShadow: 'inset 0 2px 8px rgba(0, 0, 0, 0.1)'
   };
 
   const cardStyle = {
     background: 'linear-gradient(135deg, #262421 0%, #1a1816 100%)',
-    borderRadius: '16px',
-    padding: '2.5rem',
-    margin: '2rem auto',
-    maxWidth: '1200px',
+    borderRadius: windowWidth < 768 ? '12px' : '16px',
+    padding: windowWidth < 768 ? '1.5rem' : windowWidth < 1024 ? '2rem' : '2.5rem',
+    margin: windowWidth < 768 ? '1rem auto' : '2rem auto',
+    maxWidth: windowWidth < 768 ? '100%' : windowWidth < 1024 ? '1000px' : '1200px',
     boxShadow: '0 8px 24px rgba(0, 0, 0, 0.2), 0 4px 12px rgba(0, 0, 0, 0.1)',
     border: '2px solid #3d3a37',
     overflowX: 'hidden',
@@ -1216,21 +1233,24 @@ export default function NeuronSimPage() {
   const buttonStyle = {
     background: 'linear-gradient(135deg, #2a2824 0%, #1a1816 100%)',
     color: '#b0a99f',
-    padding: '1.25rem 2.5rem',
-    borderRadius: '12px',
+    padding: windowWidth < 768 ? '0.875rem 1.5rem' : '1.25rem 2.5rem',
+    borderRadius: windowWidth < 768 ? '8px' : '12px',
     border: '2px solid #3d3a37',
     fontWeight: '700',
-    fontSize: '1.1rem',
+    fontSize: windowWidth < 768 ? '0.9rem' : '1.1rem',
     cursor: 'pointer',
-    margin: '0.75rem',
+    margin: windowWidth < 768 ? '0.5rem' : '0.75rem',
     fontFamily: 'Georgia, serif',
-    minWidth: '160px',
+    minWidth: windowWidth < 768 ? '120px' : '160px',
     boxShadow: '0 6px 16px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.1)',
     transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
     textTransform: 'uppercase',
     letterSpacing: '0.5px',
     position: 'relative',
-    overflow: 'hidden'
+    overflow: 'hidden',
+    width: windowWidth < 768 ? '100%' : 'auto',
+    maxWidth: windowWidth < 768 ? '300px' : 'none',
+    touchAction: 'manipulation'
   };
 
   const activeButtonStyle = {
@@ -1660,6 +1680,8 @@ export default function NeuronSimPage() {
 
   return (
     <div style={homepageStyle}>
+      {/* Mobile viewport optimization */}
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
       {/* Hero Section */}
       <div style={heroStyle}>
         <h1 style={titleStyle}>Interactive Neuron Simulation</h1>
@@ -1791,12 +1813,30 @@ export default function NeuronSimPage() {
       {/* Main Content */}
       <div style={sectionStyle}>
         <div style={cardStyle}>
-          <h2 style={{fontSize: '1.5rem', color: '#ffffff', marginBottom: '1.5rem', fontWeight: '600', fontFamily: 'Georgia, serif', textAlign: 'center'}}>
+          <h2 style={{
+            fontSize: windowWidth < 768 ? '1.25rem' : '1.5rem', 
+            color: '#ffffff', 
+            marginBottom: windowWidth < 768 ? '1rem' : '1.5rem', 
+            fontWeight: '600', 
+            fontFamily: 'Georgia, serif', 
+            textAlign: 'center',
+            lineHeight: '1.3',
+            padding: windowWidth < 768 ? '0 0.5rem' : '0'
+          }}>
             Presynaptic-Postsynaptic Network with Live Signal Propagation
           </h2>
           
           {/* Pattern Training Buttons */}
-          <div style={{textAlign: 'center', marginBottom: '1rem'}}>
+          <div style={{
+            textAlign: 'center', 
+            marginBottom: windowWidth < 768 ? '1rem' : '1rem',
+            display: 'flex',
+            flexDirection: windowWidth < 768 ? 'column' : 'row',
+            flexWrap: 'wrap',
+            justifyContent: 'center',
+            gap: windowWidth < 768 ? '0.5rem' : '1rem',
+            alignItems: 'center'
+          }}>
               <button 
               onClick={() => setCurrentMode('A')}
               style={currentMode === 'A' ? activeButtonStyle : buttonStyle}
@@ -1900,12 +1940,12 @@ export default function NeuronSimPage() {
 
           {/* Network Canvas */}
           <div style={{
-            height: '800px', 
+            height: windowWidth < 768 ? '400px' : windowWidth < 1024 ? '600px' : '800px', 
             width: '100%', 
             background: 'linear-gradient(135deg, #1a1816 0%, #0f0e0c 100%)', 
-            borderRadius: '16px', 
-            border: '3px solid #3d3a37', 
-            marginBottom: '2rem', 
+            borderRadius: windowWidth < 768 ? '12px' : '16px', 
+            border: windowWidth < 768 ? '2px solid #3d3a37' : '3px solid #3d3a37', 
+            marginBottom: windowWidth < 768 ? '1rem' : '2rem', 
             overflow: 'hidden', 
             position: 'relative', 
             boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4), 0 0 20px rgba(74, 222, 128, 0.4), inset 0 2px 4px rgba(255, 255, 255, 0.05)'
@@ -1925,18 +1965,19 @@ export default function NeuronSimPage() {
           <div style={{
             textAlign: 'center', 
             color: '#b0a99f', 
-            fontSize: '1rem',
+            fontSize: windowWidth < 768 ? '0.9rem' : '1rem',
             fontWeight: '600',
-            padding: '1rem 2rem',
+            padding: windowWidth < 768 ? '0.75rem 1rem' : '1rem 2rem',
             background: 'linear-gradient(135deg, #1a1816 0%, #262421 100%)',
-            borderRadius: '12px',
+            borderRadius: windowWidth < 768 ? '8px' : '12px',
             border: '1px solid #3d3a37',
             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
-            letterSpacing: '0.3px'
+            letterSpacing: '0.3px',
+            lineHeight: '1.4'
           }}>
-            <span style={{color: '#4ade80', fontSize: '1.2rem'}}>●</span> Excitatory connections &nbsp;&nbsp;&nbsp;
-            <span style={{color: '#ff6b6b', fontSize: '1.2rem'}}>●</span> Inhibitory connections &nbsp;&nbsp;&nbsp;
-            <span style={{color: '#4ade80', fontSize: '1.2rem'}}>⚡</span> Signal particles
+            <span style={{color: '#4ade80', fontSize: windowWidth < 768 ? '1rem' : '1.2rem'}}>●</span> {windowWidth < 768 ? 'Excitatory' : 'Excitatory connections'} &nbsp;&nbsp;&nbsp;
+            <span style={{color: '#ff6b6b', fontSize: windowWidth < 768 ? '1rem' : '1.2rem'}}>●</span> {windowWidth < 768 ? 'Inhibitory' : 'Inhibitory connections'} &nbsp;&nbsp;&nbsp;
+            <span style={{color: '#4ade80', fontSize: windowWidth < 768 ? '1rem' : '1.2rem'}}>⚡</span> {windowWidth < 768 ? 'Signals' : 'Signal particles'}
           </div>
         </div>
 
@@ -2024,10 +2065,10 @@ export default function NeuronSimPage() {
       {/* ALZHEIMER'S SIMULATION - RED THEME */}
       <div style={{
         background: 'linear-gradient(135deg, #262421 0%, #1a1816 100%)',
-        borderRadius: '16px',
-        padding: '2.5rem',
-        margin: '2rem auto',
-        maxWidth: '1200px',
+        borderRadius: windowWidth < 768 ? '12px' : '16px',
+        padding: windowWidth < 768 ? '1.5rem' : windowWidth < 1024 ? '2rem' : '2.5rem',
+        margin: windowWidth < 768 ? '1rem auto' : '2rem auto',
+        maxWidth: windowWidth < 768 ? '100%' : windowWidth < 1024 ? '1000px' : '1200px',
         boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.2)',
         overflowX: 'hidden',
         border: '2px solid #3d3a37',
@@ -2035,13 +2076,15 @@ export default function NeuronSimPage() {
       }}>
         <h2 style={{
           color: '#ffffff',
-          fontSize: '2.5rem',
-          marginBottom: '2rem',
+          fontSize: windowWidth < 768 ? '1.75rem' : windowWidth < 1024 ? '2rem' : '2.5rem',
+          marginBottom: windowWidth < 768 ? '1rem' : '2rem',
           textAlign: 'center',
           fontWeight: '800',
           fontFamily: 'Georgia, serif',
           textShadow: '0 3px 6px rgba(0, 0, 0, 0.4)',
-          letterSpacing: '0.5px'
+          letterSpacing: '0.5px',
+          lineHeight: '1.2',
+          padding: windowWidth < 768 ? '0 1rem' : '0'
         }}>
           Alzheimer's Neuron Simulation
         </h2>
@@ -2079,10 +2122,12 @@ export default function NeuronSimPage() {
         {/* Duplicate Control Buttons */}
         <div style={{
           display: 'flex',
+          flexDirection: windowWidth < 768 ? 'column' : 'row',
           justifyContent: 'center',
-          gap: '1rem',
-          marginBottom: '2rem',
-          flexWrap: 'wrap'
+          gap: windowWidth < 768 ? '0.5rem' : '1rem',
+          marginBottom: windowWidth < 768 ? '1rem' : '2rem',
+          flexWrap: 'wrap',
+          alignItems: 'center'
         }}>
           <button
             onClick={() => handleAlzheimerModeChange('A')}
@@ -2414,12 +2459,12 @@ export default function NeuronSimPage() {
 
         {/* Duplicate Network Canvas */}
         <div style={{
-          height: '800px',
+          height: windowWidth < 768 ? '400px' : windowWidth < 1024 ? '600px' : '800px',
           width: '100%',
-          background: '#1a1816',
-          borderRadius: '8px',
+          background: 'linear-gradient(135deg, #1a1816 0%, #0f0e0c 100%)',
+          borderRadius: windowWidth < 768 ? '12px' : '8px',
           border: 'none',
-          marginBottom: '1rem',
+          marginBottom: windowWidth < 768 ? '1rem' : '1rem',
           overflow: 'hidden',
           position: 'relative',
           boxShadow: '0 0 8px rgba(255, 107, 107, 0.6), 0 0 16px rgba(255, 107, 107, 0.3)'
