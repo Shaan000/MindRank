@@ -13,19 +13,19 @@ const IndividualNeuronStates = ({ neurons, membranePotentials, currentMode }) =>
 
   const titleStyle = {
     color: '#ffffff',
-    fontSize: '1.2rem',
+    fontSize: window.innerWidth < 768 ? '1rem' : '1.2rem',
     fontWeight: 'bold',
-    marginBottom: '1rem',
+    marginBottom: window.innerWidth < 768 ? '0.5rem' : '1rem',
     textAlign: 'center'
   };
 
   const neuronContainerStyle = {
     display: 'grid',
-    gridTemplateColumns: 'repeat(6, 1fr)',
-    gridTemplateRows: 'repeat(3, 1fr)',
-    gap: '1.5rem',
-    padding: '1rem',
-    minHeight: '400px',
+    gridTemplateColumns: window.innerWidth < 768 ? 'repeat(2, 1fr)' : window.innerWidth < 1024 ? 'repeat(3, 1fr)' : 'repeat(6, 1fr)',
+    gridTemplateRows: window.innerWidth < 768 ? 'repeat(auto-fit, 1fr)' : 'repeat(3, 1fr)',
+    gap: window.innerWidth < 768 ? '1rem' : '1.5rem',
+    padding: window.innerWidth < 768 ? '0.5rem' : '1rem',
+    minHeight: window.innerWidth < 768 ? 'auto' : '400px',
     alignItems: 'center',
     justifyItems: 'center'
   };
@@ -58,8 +58,8 @@ const IndividualNeuronStates = ({ neurons, membranePotentials, currentMode }) =>
     }
     
     return {
-      width: '60px',
-      height: '60px',
+      width: window.innerWidth < 768 ? '50px' : '60px',
+      height: window.innerWidth < 768 ? '50px' : '60px',
       borderRadius: '50%',
       background: backgroundColor,
       border: 'none',
@@ -68,7 +68,7 @@ const IndividualNeuronStates = ({ neurons, membranePotentials, currentMode }) =>
       alignItems: 'center',
       justifyContent: 'center',
       color: '#ffffff',
-      fontSize: '0.9rem',
+      fontSize: window.innerWidth < 768 ? '0.7rem' : '0.9rem',
       fontWeight: 'bold',
       boxShadow: `0 0 6px ${shadowColor}, 0 0 12px ${shadowColorOuter}`,
       position: 'relative'
@@ -77,7 +77,7 @@ const IndividualNeuronStates = ({ neurons, membranePotentials, currentMode }) =>
 
   const neuronLabelStyle = {
     color: '#4ade80',
-    fontSize: '0.8rem',
+    fontSize: window.innerWidth < 768 ? '0.6rem' : '0.8rem',
     textAlign: 'center',
     lineHeight: '1.2'
   };

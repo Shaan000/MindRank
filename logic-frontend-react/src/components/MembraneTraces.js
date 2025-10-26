@@ -23,8 +23,8 @@ const MembraneTraces = ({ neurons, membranePotentials, timeData, hideTitle = fal
 
   const tracesGridStyle = {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-    gap: '1rem'
+    gridTemplateColumns: window.innerWidth < 768 ? 'repeat(auto-fit, minmax(250px, 1fr))' : 'repeat(auto-fit, minmax(300px, 1fr))',
+    gap: window.innerWidth < 768 ? '0.5rem' : '1rem'
   };
 
   const traceContainerStyle = {
@@ -45,7 +45,7 @@ const MembraneTraces = ({ neurons, membranePotentials, timeData, hideTitle = fal
 
   const canvasStyle = {
     width: '100%',
-    height: '120px',
+    height: window.innerWidth < 768 ? '100px' : '120px',
     background: '#1a1816',
     border: '1px solid #3d3a37',
     borderRadius: '4px',

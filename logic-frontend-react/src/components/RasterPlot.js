@@ -24,7 +24,8 @@ const RasterPlot = ({ selectedNeurons, spikes, timeData, outputFiringTime, isRes
   };
 
   const canvasStyle = {
-    width: '900px',
+    width: '100%',
+    maxWidth: '900px',
     height: '250px',
     background: '#1a1816',
     border: '1px solid #3d3a37',
