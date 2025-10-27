@@ -382,10 +382,24 @@ function FixedNetwork({ currentMode, onModeChange, analyzeMode, analyzeSynapses,
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    const dpr = window.devicePixelRatio || 1;
     canvas.width = dimensions.width;
     canvas.height = dimensions.height;
-    canvas.style.width = `${dimensions.width / (window.devicePixelRatio || 1)}px`;
-    canvas.style.height = `${dimensions.height / (window.devicePixelRatio || 1)}px`;
+    canvas.style.width = `${dimensions.width / dpr}px`;
+    canvas.style.height = `${dimensions.height / dpr}px`;
+
+    // Calculate responsive scaling factors based on device size
+    const canvasWidth = dimensions.width / dpr;
+    const canvasHeight = dimensions.height / dpr;
+    const baseSize = Math.min(canvasWidth, canvasHeight);
+    const scaleFactor = Math.max(0.8, Math.min(2.0, baseSize / 400)); // Scale between 0.8x and 2.0x based on canvas size
+    
+    // Responsive neuron and synapse sizes
+    const neuronRadius = Math.round(25 * scaleFactor);
+    const neuronStrokeWidth = Math.round(3 * scaleFactor);
+    const neuronFontSize = Math.round(12 * scaleFactor);
+    const synapseLineWidth = Math.round(2 * scaleFactor);
+    const particleRadius = Math.round(3 * scaleFactor);
 
     // Clear canvas
     ctx.fillStyle = '#1a1816';
@@ -464,7 +478,7 @@ function FixedNetwork({ currentMode, onModeChange, analyzeMode, analyzeSynapses,
           }
 
           ctx.strokeStyle = `${finalColor}${Math.floor(finalAlpha * 255).toString(16).padStart(2, '0')}`;
-          ctx.lineWidth = finalThickness;
+          ctx.lineWidth = finalThickness * synapseLineWidth;
 
           // Add glow effect for active edges
           if (shouldGlow) {
@@ -515,7 +529,7 @@ function FixedNetwork({ currentMode, onModeChange, analyzeMode, analyzeSynapses,
       ctx.shadowColor = particle.color;
       ctx.shadowBlur = 8;
         ctx.beginPath();
-      ctx.arc(x, y, 4, 0, 2 * Math.PI);
+      ctx.arc(x, y, particleRadius, 0, 2 * Math.PI);
         ctx.fill();
         ctx.shadowBlur = 0;
       });
@@ -672,14 +686,14 @@ function FixedNetwork({ currentMode, onModeChange, analyzeMode, analyzeSynapses,
 
       // Neuron circle
       ctx.strokeStyle = pos.type === 'inhibitory' ? '#ff6b6b' : '#769656';
-      ctx.lineWidth = 3;
+      ctx.lineWidth = neuronStrokeWidth;
       ctx.beginPath();
-      ctx.arc(pos.x, pos.y, 25, 0, 2 * Math.PI);
+      ctx.arc(pos.x, pos.y, neuronRadius, 0, 2 * Math.PI);
       ctx.stroke();
 
       // Neuron label
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 12px Georgia, serif';
+      ctx.font = `bold ${neuronFontSize}px Georgia, serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       const label = pos.type === 'input' ? `I${parseInt(neuronId) + 1}` : 
@@ -708,10 +722,17 @@ function FixedNetwork({ currentMode, onModeChange, analyzeMode, analyzeSynapses,
           const mouseX = (e.clientX - rect.left) * dpr;
           const mouseY = (e.clientY - rect.top) * dpr;
           
+          // Calculate responsive click radius
+          const canvasWidth = rect.width;
+          const canvasHeight = rect.height;
+          const baseSize = Math.min(canvasWidth, canvasHeight);
+          const scaleFactor = Math.max(0.8, Math.min(2.0, baseSize / 400));
+          const clickRadius = Math.round(30 * scaleFactor);
+          
           // Check each neuron to see if mouse is within its radius
           for (const [neuronId, pos] of Object.entries(neuronPositions)) {
             const distance = Math.sqrt((mouseX - pos.x) ** 2 + (mouseY - pos.y) ** 2);
-            if (distance <= 30) { // Within neuron radius
+            if (distance <= clickRadius) { // Within neuron radius
               handleMouseDown(e, neuronId);
               break;
             }
